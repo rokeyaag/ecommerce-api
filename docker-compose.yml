@@ -1,0 +1,150 @@
+version: '3.8'
+
+services:
+
+  user-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: user_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - user_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 5
+
+  product-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: product_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - product_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 5
+
+  order-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: order_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - order_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 5
+
+  payment-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: payment_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - payment_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      retries: 5
+
+  user-service:
+    build: ./services/user-service
+    environment:
+      DB_HOST: user-db
+      DB_NAME: user_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: your-secret-change-this
+    depends_on:
+      user-db:
+        condition: service_healthy
+    ports:
+      - "8001:8000"
+
+  product-service:
+    build: ./services/product-service
+    environment:
+      DB_HOST: product-db
+      DB_NAME: product_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+    depends_on:
+      product-db:
+        condition: service_healthy
+    ports:
+      - "8002:8000"
+
+  order-service:
+    build: ./services/order-service
+    environment:
+      DB_HOST: order-db
+      DB_NAME: order_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      JWT_SECRET: your-secret-change-this
+      PRODUCT_SERVICE_URL: http://product-service:8000
+    depends_on:
+      order-db:
+        condition: service_healthy
+      product-service:
+        condition: service_started
+    ports:
+      - "8003:8000"
+
+  payment-service:
+    build: ./services/payment-service
+    environment:
+      DB_HOST: payment-db
+      DB_NAME: payment_db
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      ORDER_SERVICE_URL: http://order-service:8000
+      BASE_URL: http://localhost
+      FRONTEND_URL: http://localhost:3000
+      BKASH_APP_KEY: your-bkash-app-key
+      BKASH_APP_SECRET: your-bkash-app-secret
+      BKASH_USERNAME: your-bkash-username
+      BKASH_PASSWORD: your-bkash-password
+      SSL_STORE_ID: your-ssl-store-id
+      SSL_STORE_PASS: your-ssl-store-pass
+      SHURJOPAY_USERNAME: your-shurjopay-username
+      SHURJOPAY_PASSWORD: your-shurjopay-password
+    depends_on:
+      payment-db:
+        condition: service_healthy
+      order-service:
+        condition: service_started
+    ports:
+      - "8004:8000"
+
+  api-gateway:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./api-gateway/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - user-service
+      - product-service
+      - order-service
+      - payment-service
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      REACT_APP_API_URL: http://localhost/api
+
+volumes:
+  user_db_data:
+  product_db_data:
+  order_db_data:
+  payment_db_data:

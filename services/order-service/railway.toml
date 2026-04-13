@@ -1,0 +1,7 @@
+[build]
+builder = "nixpacks"
+
+[deploy]
+startCommand = "python manage.py migrate && gunicorn order_service.wsgi:application --bind 0.0.0.0:$PORT"
+healthcheckPath = "/api/orders/"
+restartPolicyType = "on_failure"
