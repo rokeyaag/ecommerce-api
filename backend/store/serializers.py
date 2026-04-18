@@ -4,42 +4,56 @@ from .models import Product, Order, CartItem, Category
 
 
 class UserRegistrationSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)
+    password         = serializers.CharField(write_only=True, min_length=6)
+    password_confirm = serializers.CharField(write_only=True)
 
     class Meta:
-        model = User
-        fields = ['id', 'username', 'email', 'password']
+        model  = User
+        fields = ['id', 'username', 'email', 'password', 'password_confirm']
+
+    def validate_email(self, value):
+        if User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("এই email দিয়ে আগেই account আছে।")
+        return value
+
+    def validate(self, data):
+        if data['password'] != data['password_confirm']:
+            raise serializers.ValidationError({"password_confirm": "Password দুটো মিলছে না।"})
+        return data
 
     def create(self, validated_data):
-        user = User.objects.create_user(**validated_data)
-        return user
+        validated_data.pop('password_confirm')
+        return User.objects.create_user(**validated_data)
 
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
-        model = Category
+        model  = Category
         fields = '__all__'
 
 
 class ProductSerializer(serializers.ModelSerializer):
-    category = CategorySerializer(read_only=True)
-    image    = serializers.SerializerMethodField()
+    category    = CategorySerializer(read_only=True)
+    image       = serializers.SerializerMethodField()
+    final_image = serializers.SerializerMethodField()
 
     class Meta:
-        model = Product
-        fields = ['id', 'name', 'price', 'stock', 'image', 'description', 'category', 'created_at']
+        model  = Product
+        fields = [
+            'id', 'name', 'price', 'stock',
+            'image', 'image_url', 'final_image',
+            'description', 'category', 'created_at',
+        ]
 
     def get_image(self, obj):
         if not obj.image:
             return None
 
-        raw = str(obj.image)  # e.g. "https%3A/img.drz.lazcdn.com/..."
+        raw = str(obj.image)
 
-        # ── Case 1: already a proper URL stored in the field ──────────────────
         if raw.startswith('http://') or raw.startswith('https://'):
             return raw
 
-        # ── Case 2: URL-encoded external URL (https%3A/... or https%3A%2F%2F...)
         import urllib.parse
         try:
             decoded = urllib.parse.unquote(raw)
@@ -48,19 +62,23 @@ class ProductSerializer(serializers.ModelSerializer):
         except Exception:
             pass
 
-        # ── Case 3: single-slash encoded (https:/img... → https://img...)
         if raw.startswith('https:/') and not raw.startswith('https://'):
             return 'https://' + raw[7:]
         if raw.startswith('http:/') and not raw.startswith('http://'):
             return 'http://' + raw[6:]
 
-        # ── Case 4: normal local media file → build absolute URL ─────────────
         request = self.context.get('request')
         if request:
             return request.build_absolute_uri(obj.image.url)
 
-        # fallback
         return obj.image.url
+
+    def get_final_image(self, obj):
+        # image_url থাকলে সেটা আগে return করো
+        if obj.image_url:
+            return obj.image_url
+        # না থাকলে image field থেকে নাও
+        return self.get_image(obj)
 
 
 class CartItemSerializer(serializers.ModelSerializer):
@@ -86,6 +104,7 @@ class OrderSerializer(serializers.ModelSerializer):
             'id', 'product', 'quantity',
             'address', 'phone', 'order_status',
             'payment_method', 'payment_status',
-            'transaction_id', 'username', 'created_at',
+            'transaction_id', 'total_amount',
+            'username', 'created_at',
         ]
         read_only_fields = ['order_status', 'payment_status', 'transaction_id']

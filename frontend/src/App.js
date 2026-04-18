@@ -1,59 +1,50 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { CartProvider, useCart } from './context/CartContext';
 import CartPage from './pages/CartPage';
+import ProfilePage from './pages/ProfilePage';
 import {
   loginUser, registerUser,
   getToken, setToken, removeToken, isLoggedIn
 } from './api';
 
-const API = 'http://127.0.0.1:8000';
+const API = 'http://localhost:8000';
 
-// ── Image URL helper (FIXED for Django media encoded URLs) ───────────────────
-const getImg = (image) => {
+// Responsive hook
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return isMobile;
+};
+
+// Image URL helper
+const getImg = (image, image_url) => {
+  if (image_url) return image_url;
   if (!image) return null;
-
-  // Already a full external URL
   if (image.startsWith('http://') || image.startsWith('https://')) return image;
-
-  // Pattern: http://127.0.0.1:8000/media/https%3A/img.drz.lazcdn.com/...
-  // Extract everything after /media/ and decode
   const mediaMatch = image.match(/\/media\/(.+)/);
   if (mediaMatch) {
     const raw = mediaMatch[1];
-
-    // Try full decode first
     try {
       const decoded = decodeURIComponent(raw);
-      if (decoded.startsWith('http://') || decoded.startsWith('https://')) {
-        return decoded;
-      }
+      if (decoded.startsWith('http://') || decoded.startsWith('https://')) return decoded;
     } catch (_) {}
-
-    // Handle partial encoding: https%3A/img... → https://img...
     const fixedSlash = raw
       .replace(/^https%3A\/\//i, 'https://')
       .replace(/^https%3A\//i,   'https://')
       .replace(/^http%3A\/\//i,  'http://')
       .replace(/^http%3A\//i,    'http://');
-
-    if (fixedSlash.startsWith('http://') || fixedSlash.startsWith('https://')) {
-      return fixedSlash;
-    }
-
-    // Handle single slash: https:/img... → https://img...
-    if (raw.startsWith('https:/') && !raw.startsWith('https://')) {
-      return 'https://' + raw.slice(7);
-    }
-    if (raw.startsWith('http:/') && !raw.startsWith('http://')) {
-      return 'http://' + raw.slice(6);
-    }
+    if (fixedSlash.startsWith('http://') || fixedSlash.startsWith('https://')) return fixedSlash;
+    if (raw.startsWith('https:/') && !raw.startsWith('https://')) return 'https://' + raw.slice(7);
+    if (raw.startsWith('http:/') && !raw.startsWith('http://')) return 'http://' + raw.slice(6);
   }
-
-  // Normal relative media path → prepend API base
   return `${API}${image.startsWith('/') ? image : '/' + image}`;
 };
 
-// ── No Image Placeholder ──────────────────────────────────────────────────────
+// No Image Placeholder
 const NoImage = ({ size = 'md' }) => {
   const sizes = { sm: '60px', md: '180px', lg: '340px' };
   return (
@@ -64,42 +55,43 @@ const NoImage = ({ size = 'md' }) => {
       alignItems: 'center', justifyContent: 'center',
       gap: '8px', color: '#94a3b8',
     }}>
-      <span style={{ fontSize: size === 'lg' ? '48px' : size === 'md' ? '36px' : '22px' }}>🛍️</span>
+      <span style={{ fontSize: size === 'lg' ? '48px' : size === 'md' ? '36px' : '22px' }}>📦</span>
       {size !== 'sm' && <span style={{ fontSize: '12px', fontWeight: '500' }}>No Image</span>}
     </div>
   );
 };
 
-// ── Safe Image Component ──────────────────────────────────────────────────────
+// Safe Image Component
 const SafeImg = ({ src, alt, style, size = 'md', ...props }) => {
   const [failed, setFailed] = useState(false);
   const [loaded, setLoaded] = useState(false);
-  const finalSrc = src ? getImg(src) : null;
-
-  useEffect(() => {
-    setFailed(false);
-    setLoaded(false);
-  }, [src]);
-
+  const finalSrc = src ? getImg(src, null) : null;
+  useEffect(() => { setFailed(false); setLoaded(false); }, [src]);
   if (!finalSrc || failed) return <NoImage size={size} />;
-
   return (
-    <img
-      src={finalSrc}
-      alt={alt || ''}
-      style={{ ...style, display: loaded ? 'block' : 'none' }}
-      onLoad={() => setLoaded(true)}
-      onError={() => setFailed(true)}
-      {...props}
-    />
+    <img src={finalSrc} alt={alt || ''} style={{ ...style, display: loaded ? 'block' : 'none' }}
+      onLoad={() => setLoaded(true)} onError={() => setFailed(true)} {...props} />
   );
 };
 
-// ── Carousel ──────────────────────────────────────────────────────────────────
+// Logo Component
+const Logo = ({ height = '50px', fallbackSize = '20px', fallbackColor = '#f97316', fallbackColor2 = '#1e293b' }) => (
+  <span style={{ display: 'flex', alignItems: 'center' }}>
+    <img src="/logo.png" alt="IMX E-Shop" style={{ height, objectFit: 'contain' }}
+      onError={e => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'inline'; }} />
+    <span style={{ display: 'none', fontSize: fallbackSize, fontWeight: '900' }}>
+      <span style={{ color: fallbackColor }}>IMX </span>
+      <span style={{ color: fallbackColor2 }}>E-Shop</span>
+    </span>
+  </span>
+);
+
+// Carousel
 const Carousel = ({ products }) => {
   const [current, setCurrent] = useState(0);
   const timer = useRef(null);
-  const slides = products.filter(p => p.image).slice(0, 10);
+  const isMobile = useIsMobile();
+  const slides = products.filter(p => p.image || p.image_url || p.final_image).slice(0, 10);
 
   useEffect(() => {
     if (!slides.length) return;
@@ -114,74 +106,54 @@ const Carousel = ({ products }) => {
   };
 
   if (!slides.length) return (
-    <div style={{
-      height: '340px',
-      background: 'linear-gradient(135deg,#f0f7ff,#e8f4fd)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
+    <div style={{ height: '340px', background: 'linear-gradient(135deg,#f0f7ff,#e8f4fd)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <p style={{ color: '#aaa', fontSize: '16px' }}>Add products with images to see carousel</p>
     </div>
   );
 
   return (
-    <div style={{ position: 'relative', height: '340px', overflow: 'hidden', background: '#f0f7ff' }}>
+    <div style={{ position: 'relative', height: isMobile ? '220px' : '340px', overflow: 'hidden', background: '#f0f7ff' }}>
       {slides.map((p, idx) => {
-        const imgUrl = getImg(p.image);
+        const imgUrl = getImg(p.image, p.final_image || p.image_url);
         return (
           <div key={p.id} style={{
             position: 'absolute', inset: 0, display: 'flex',
+            flexDirection: isMobile ? 'column' : 'row',
             opacity: current === idx ? 1 : 0,
             transition: 'opacity 0.8s ease',
             pointerEvents: current === idx ? 'auto' : 'none',
           }}>
-            {/* Left text */}
             <div style={{
-              width: '50%', display: 'flex', flexDirection: 'column',
-              justifyContent: 'center', padding: '2rem 3rem',
-              background: 'linear-gradient(to right, rgba(240,247,255,0.98) 80%, transparent)',
-              zIndex: 2,
+              width: isMobile ? '100%' : '50%', display: 'flex', flexDirection: 'column',
+              justifyContent: 'center', padding: isMobile ? '1rem 1.2rem' : '2rem 3rem',
+              background: isMobile ? 'linear-gradient(to bottom, rgba(240,247,255,0.95) 60%, transparent)' : 'linear-gradient(to right, rgba(240,247,255,0.98) 80%, transparent)',
+              zIndex: 2, position: isMobile ? 'absolute' : 'relative',
+              bottom: isMobile ? 0 : 'auto', left: 0, right: 0,
             }}>
-              <span style={{
-                background: '#f97316', color: '#fff', fontSize: '11px',
-                fontWeight: '700', padding: '4px 12px', borderRadius: '20px',
-                display: 'inline-block', marginBottom: '12px', width: 'fit-content',
-              }}>🔥 EXCLUSIVE DEAL</span>
-              <h2 style={{ color: '#1e293b', fontSize: 'clamp(18px, 2.5vw, 30px)', fontWeight: '900', marginBottom: '8px', lineHeight: '1.2' }}>
-                {p.name}
-              </h2>
-              <p style={{ color: '#f97316', fontWeight: '800', fontSize: 'clamp(18px, 2vw, 26px)', marginBottom: '8px' }}>
-                ${p.price}
-              </p>
-              {p.description && (
+              <span style={{ background: '#f97316', color: '#fff', fontSize: '10px', fontWeight: '700', padding: '3px 10px', borderRadius: '20px', display: 'inline-block', marginBottom: '6px', width: 'fit-content' }}>
+                🔥 EXCLUSIVE DEAL
+              </span>
+              <h2 style={{ color: '#1e293b', fontSize: isMobile ? '16px' : 'clamp(18px, 2.5vw, 30px)', fontWeight: '900', marginBottom: '4px', lineHeight: '1.2' }}>{p.name}</h2>
+              <p style={{ color: '#f97316', fontWeight: '800', fontSize: isMobile ? '16px' : 'clamp(18px, 2vw, 26px)', marginBottom: '6px' }}>৳{p.price}</p>
+              {!isMobile && p.description && (
                 <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '20px', lineHeight: '1.6', maxWidth: '280px' }}>
                   {p.description.slice(0, 80)}{p.description.length > 80 ? '...' : ''}
                 </p>
               )}
-              <div style={{ display: 'flex', gap: '10px' }}>
-                <button style={{ background: '#f97316', color: '#fff', border: 'none', borderRadius: '25px', padding: '11px 24px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>
-                  Shop Now →
-                </button>
-                <span style={{ background: '#fee2e2', color: '#ef4444', fontWeight: '700', padding: '11px 16px', borderRadius: '25px', fontSize: '13px' }}>
-                  Stock: {p.stock}
-                </span>
-              </div>
+              {!isMobile && (
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button style={{ background: '#f97316', color: '#fff', border: 'none', borderRadius: '25px', padding: '11px 24px', fontSize: '14px', fontWeight: '700', cursor: 'pointer' }}>Shop Now 🛒</button>
+                  <span style={{ background: '#fee2e2', color: '#ef4444', fontWeight: '700', padding: '11px 16px', borderRadius: '25px', fontSize: '13px' }}>Stock: {p.stock}</span>
+                </div>
+              )}
             </div>
-
-            {/* Right image */}
-            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#e8f0fa' }}>
+            <div style={{ flex: 1, position: 'relative', overflow: 'hidden', background: '#e8f0fa', height: isMobile ? '220px' : 'auto' }}>
               {imgUrl ? (
-                <img
-                  src={imgUrl}
-                  alt={p.name}
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
-                  onError={e => {
-                    e.target.style.display = 'none';
-                    e.target.parentElement.style.background = 'linear-gradient(135deg,#f1f5f9,#e2e8f0)';
-                  }}
-                />
+                <img src={imgUrl} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'center' }}
+                  onError={e => { e.target.style.display = 'none'; e.target.parentElement.style.background = 'linear-gradient(135deg,#f1f5f9,#e2e8f0)'; }} />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg,#f1f5f9,#e2e8f0)' }}>
-                  <span style={{ fontSize: '80px', opacity: 0.3 }}>🛍️</span>
+                  <span style={{ fontSize: '80px', opacity: 0.3 }}>📦</span>
                 </div>
               )}
               <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to left, transparent 60%, rgba(240,247,255,0.5))' }} />
@@ -190,7 +162,6 @@ const Carousel = ({ products }) => {
         );
       })}
 
-      {/* Dots */}
       <div style={{ position: 'absolute', bottom: '16px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '6px', zIndex: 10 }}>
         {slides.map((_, idx) => (
           <button key={idx} onClick={() => goTo(idx)} style={{
@@ -200,31 +171,22 @@ const Carousel = ({ products }) => {
           }} />
         ))}
       </div>
-
-      {/* Counter */}
       <div style={{ position: 'absolute', bottom: '16px', right: '20px', zIndex: 10, background: 'rgba(0,0,0,0.15)', color: '#333', padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
         {current + 1} / {slides.length}
       </div>
-
-      {/* Arrows */}
-      {['←', '→'].map((arrow, i) => (
-        <button key={i}
-          onClick={() => goTo((current + (i === 0 ? -1 : 1) + slides.length) % slides.length)}
-          style={{
-            position: 'absolute', top: '50%', [i === 0 ? 'left' : 'right']: '16px',
-            transform: 'translateY(-50%)', zIndex: 10,
-            background: 'rgba(255,255,255,0.8)', backdropFilter: 'blur(4px)',
-            border: '1px solid rgba(0,0,0,0.1)', color: '#333',
-            width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', fontSize: '16px',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-          }}>{arrow}</button>
+      {['◀', '▶'].map((arrow, i) => (
+        <button key={i} onClick={() => goTo((current + (i === 0 ? -1 : 1) + slides.length) % slides.length)} style={{
+          position: 'absolute', top: '50%', [i === 0 ? 'left' : 'right']: '16px',
+          transform: 'translateY(-50%)', zIndex: 10,
+          background: 'rgba(255,255,255,0.8)', border: '1px solid rgba(0,0,0,0.1)', color: '#333',
+          width: '40px', height: '40px', borderRadius: '50%', cursor: 'pointer', fontSize: '16px',
+        }}>{arrow}</button>
       ))}
     </div>
   );
 };
 
-
-// ── Feature Strip ─────────────────────────────────────────────────────────────
+// Feature Strip
 const FeatureStrip = () => (
   <div style={{ background: '#fff', borderTop: '1px solid #f1f5f9', borderBottom: '1px solid #f1f5f9', padding: '1.2rem 1.5rem' }}>
     <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
@@ -232,7 +194,7 @@ const FeatureStrip = () => (
         { icon: '🚚', title: 'Free Delivery', desc: 'Orders over ৳1000' },
         { icon: '↩️', title: 'Easy Returns', desc: '7-day return policy' },
         { icon: '🔒', title: 'Secure Payment', desc: 'bKash, Nagad, Card' },
-        { icon: '🎧', title: '24/7 Support', desc: 'Always here to help' },
+        { icon: '💬', title: '24/7 Support', desc: 'Always here to help' },
       ].map(f => (
         <div key={f.title} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px 14px', borderRadius: '10px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
           <span style={{ fontSize: '24px' }}>{f.icon}</span>
@@ -246,28 +208,20 @@ const FeatureStrip = () => (
   </div>
 );
 
-
-// ── Marquee ───────────────────────────────────────────────────────────────────
+// Marquee
 const Marquee = ({ products }) => {
   const items = [...products, ...products];
   return (
     <div style={{ background: '#f97316', overflow: 'hidden', padding: '10px 0', position: 'relative' }}>
       <div style={{ display: 'flex', gap: '2rem', animation: 'marquee 30s linear infinite', width: 'max-content' }}>
         {items.map((p, idx) => {
-          const imgUrl = getImg(p.image);
+          const imgUrl = getImg(p.image, p.final_image || p.image_url);
           return (
             <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fff', whiteSpace: 'nowrap', fontSize: '14px' }}>
-              {imgUrl && (
-                <img
-                  src={imgUrl}
-                  alt={p.name}
-                  style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '50%', border: '2px solid #fff' }}
-                  onError={e => e.target.style.display = 'none'}
-                />
-              )}
+              {imgUrl && <img src={imgUrl} alt={p.name} style={{ width: '28px', height: '28px', objectFit: 'cover', borderRadius: '50%', border: '2px solid #fff' }} onError={e => e.target.style.display = 'none'} />}
               <span style={{ fontWeight: '600' }}>{p.name}</span>
-              <span style={{ background: 'rgba(255,255,255,0.25)', padding: '2px 8px', borderRadius: '10px', fontWeight: '700' }}>${p.price}</span>
-              <span style={{ color: 'rgba(255,255,255,0.5)' }}>✦</span>
+              <span style={{ background: 'rgba(255,255,255,0.25)', padding: '2px 8px', borderRadius: '10px', fontWeight: '700' }}>৳{p.price}</span>
+              <span style={{ color: 'rgba(255,255,255,0.5)' }}>•</span>
             </div>
           );
         })}
@@ -277,8 +231,7 @@ const Marquee = ({ products }) => {
   );
 };
 
-
-// ── Category Bar ──────────────────────────────────────────────────────────────
+// Category Bar
 const CategoryBar = ({ selected, onSelect }) => {
   const cats = [
     { name: 'All', icon: '🛍️' }, { name: 'Clothing', icon: '👕' },
@@ -304,67 +257,51 @@ const CategoryBar = ({ selected, onSelect }) => {
   );
 };
 
-
-// ── Product Card ──────────────────────────────────────────────────────────────
+// Product Card
 const ProductCard = ({ product, onAddToCart, onOrderNow }) => {
   const [wished, setWished] = useState(false);
   const [added,  setAdded]  = useState(false);
   const [imgFailed, setImgFailed] = useState(false);
-  const imgSrc = getImg(product.image);
+  const imgSrc = getImg(product.image, product.image_url);
 
   return (
     <div style={{
-      background: '#fff', borderRadius: '14px', padding: '14px',
-      border: '1px solid #e2e8f0', position: 'relative',
-      transition: 'transform 0.25s, box-shadow 0.25s',
-      boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
-    }}
+  background: '#fff', borderRadius: '14px', padding: '14px',
+  border: '1px solid #e2e8f0', position: 'relative',
+  transition: 'transform 0.25s, box-shadow 0.25s',
+  boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+  display: 'flex', flexDirection: 'column',
+}}
       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-4px)'; e.currentTarget.style.boxShadow = '0 12px 32px rgba(249,115,22,0.15)'; }}
-      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'; }}
-    >
-      <button onClick={() => setWished(!wished)} style={{
-        position: 'absolute', top: '10px', right: '10px', zIndex: 1,
-        background: wished ? '#fee2e2' : '#f1f5f9', border: 'none',
-        borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontSize: '14px',
-      }}>{wished ? '❤️' : '🤍'}</button>
-
-      {/* Product Image */}
-      <div style={{
-        width: '100%', height: '180px', borderRadius: '10px',
-        marginBottom: '12px', overflow: 'hidden', background: '#f8fafc',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}>
+      onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)'; }}>
+      <button onClick={() => setWished(!wished)} style={{ position: 'absolute', top: '10px', right: '10px', zIndex: 1, background: wished ? '#fee2e2' : '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', cursor: 'pointer', fontSize: '14px' }}>
+        {wished ? '❤️' : '🤍'}
+      </button>
+      <div style={{ width: '100%', height: '180px', borderRadius: '10px', marginBottom: '12px', overflow: 'hidden', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {imgSrc && !imgFailed ? (
-          <img
-            src={imgSrc}
-            alt={product.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }}
+          <img src={imgSrc} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }}
             onMouseEnter={e => e.target.style.transform = 'scale(1.07)'}
             onMouseLeave={e => e.target.style.transform = 'scale(1)'}
-            onError={() => setImgFailed(true)}
-          />
+            onError={() => setImgFailed(true)} />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', color: '#cbd5e1' }}>
-            <span style={{ fontSize: '40px' }}>🛍️</span>
+            <span style={{ fontSize: '40px' }}>📦</span>
             <span style={{ fontSize: '12px', fontWeight: '500' }}>No Image</span>
           </div>
         )}
       </div>
-
       {product.category?.name && (
         <span style={{ background: '#fff7ed', color: '#f97316', fontSize: '11px', fontWeight: '600', padding: '2px 8px', borderRadius: '10px', display: 'inline-block', marginBottom: '6px' }}>
           {product.category.name}
         </span>
       )}
-
       <h3 style={{ color: '#1e293b', fontSize: '15px', fontWeight: '700', marginBottom: '6px' }}>{product.name}</h3>
-      <div style={{ fontSize: '18px', fontWeight: '800', marginBottom: '4px', color: '#f97316' }}>${product.price}</div>
+      <div style={{ fontSize: '18px', fontWeight: '800', marginBottom: '4px', color: '#f97316' }}>৳{product.price}</div>
       <div style={{ fontSize: '12px', marginBottom: '12px', color: product.stock < 5 ? '#ef4444' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}>
         <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: product.stock < 5 ? '#ef4444' : '#22c55e', display: 'inline-block' }} />
         {product.stock < 5 ? `Only ${product.stock} left!` : `${product.stock} in stock`}
       </div>
-      <div style={{ marginBottom: '12px', color: '#f97316', fontSize: '13px' }}>★★★★☆ <span style={{ color: '#94a3b8', fontSize: '11px' }}>(120)</span></div>
-
+      <div style={{ marginBottom: '12px', color: '#f97316', fontSize: '13px' }}>⭐⭐⭐⭐⭐ <span style={{ color: '#94a3b8', fontSize: '11px' }}>(120)</span></div>
       <button onClick={() => { onAddToCart(product); setAdded(true); setTimeout(() => setAdded(false), 1500); }} style={{
         width: '100%', padding: '10px', marginBottom: '7px',
         background: added ? '#22c55e' : '#f97316', color: 'white', border: 'none',
@@ -372,11 +309,9 @@ const ProductCard = ({ product, onAddToCart, onOrderNow }) => {
       }}>
         {added ? '✅ Added to Cart!' : '🛒 Add to Cart'}
       </button>
-
       <button onClick={() => onOrderNow(product)} style={{
         width: '100%', padding: '9px', background: 'transparent', color: '#f97316',
-        border: '1.5px solid #f97316', borderRadius: '8px',
-        fontWeight: '700', cursor: 'pointer', fontSize: '13px', transition: 'all 0.2s',
+        border: '1.5px solid #f97316', borderRadius: '8px', fontWeight: '700', cursor: 'pointer', fontSize: '13px', transition: 'all 0.2s',
       }}
         onMouseEnter={e => { e.target.style.background = '#f97316'; e.target.style.color = '#fff'; }}
         onMouseLeave={e => { e.target.style.background = 'transparent'; e.target.style.color = '#f97316'; }}>
@@ -386,10 +321,10 @@ const ProductCard = ({ product, onAddToCart, onOrderNow }) => {
   );
 };
 
-
-// ── Navbar ────────────────────────────────────────────────────────────────────
-const Navbar = ({ page, setPage, onCartClick, onAuthClick, onLogout, user, search, setSearch }) => {
+// Navbar
+const Navbar = ({ page, setPage, onCartClick, onAuthClick, onLogout, onProfileClick, user, search, setSearch }) => {
   const { totalItems } = useCart();
+  const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
   const [dropOpen, setDropOpen] = useState(false);
   const pages = ['Home', 'Products', 'About', 'Blog', 'Contact'];
@@ -398,60 +333,62 @@ const Navbar = ({ page, setPage, onCartClick, onAuthClick, onLogout, user, searc
     <>
       <nav style={{
         background: '#fff', borderBottom: '1px solid #e2e8f0',
-        padding: '0 1.5rem', height: '60px',
+        padding: '0 1rem', height: '60px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        position: 'sticky', top: 0, zIndex: 200, boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
+        position: 'sticky', top: 0, zIndex: 200, boxShadow: '0 1px 4px rgba(0,0,0,0.06)', gap: '8px',
       }}>
-        <div style={{ fontSize: '20px', fontWeight: '900', cursor: 'pointer', minWidth: '90px' }} onClick={() => setPage('Home')}>
-          <span style={{ color: '#f97316' }}>Shop</span><span style={{ color: '#1e293b' }}>BD</span>
+        <div style={{ cursor: 'pointer', minWidth: '80px', display: 'flex', alignItems: 'center', gap: '8px' }} onClick={() => setPage('Home')}>
+          <Logo height="40px" />
+          <span style={{ fontSize: '22px', fontWeight: '900', display: isMobile ? 'none' : 'block' }}>
+            <span style={{ color: '#f97316' }}>IMX </span>
+            <span style={{ color: '#1e293b' }}>E-Shop</span>
+          </span>
+        </div>
+        {!isMobile && (
+          <div style={{ display: 'flex', gap: '2px' }}>
+            {pages.map(p => (
+              <button key={p} onClick={() => setPage(p)} style={{
+                background: 'none', border: 'none', cursor: 'pointer',
+                color: page === p ? '#f97316' : '#64748b',
+                fontSize: '14px', fontWeight: page === p ? '700' : '500',
+                padding: '6px 12px', borderRadius: '6px',
+                borderBottom: page === p ? '2px solid #f97316' : '2px solid transparent',
+                transition: 'all 0.2s',
+              }}>{p}</button>
+            ))}
+          </div>
+        )}
+
+        <div style={{ flex: 1, maxWidth: isMobile ? '140px' : '320px', display: 'flex', alignItems: 'center', background: '#f8fafc', border: '1.5px solid #e2e8f0', borderRadius: '20px', overflow: 'hidden' }}>
+          <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && setSearch(search)}
+            style={{ flex: 1, padding: '8px 10px', border: 'none', background: 'transparent', color: '#1e293b', fontSize: '13px', outline: 'none', minWidth: 0 }} />
+          <button onClick={() => setSearch(search)} style={{ background: '#f97316', border: 'none', padding: '8px 12px', cursor: 'pointer', color: '#fff', fontSize: '14px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>🔍</button>
         </div>
 
-        <div style={{ display: 'flex', gap: '2px' }}>
-          {pages.map(p => (
-            <button key={p} onClick={() => setPage(p)} style={{
-              background: 'none', border: 'none', cursor: 'pointer',
-              color: page === p ? '#f97316' : '#64748b',
-              fontSize: '14px', fontWeight: page === p ? '700' : '500',
-              padding: '6px 12px', borderRadius: '6px',
-              borderBottom: page === p ? '2px solid #f97316' : '2px solid transparent',
-              transition: 'all 0.2s',
-            }}>{p}</button>
-          ))}
-        </div>
-
-        <div style={{ flex: 1, maxWidth: '280px', margin: '0 1rem' }}>
-          <input type="text" placeholder="Search products..." value={search}
-            onChange={e => setSearch(e.target.value)} style={{
-              width: '100%', padding: '8px 14px', borderRadius: '20px',
-              border: '1.5px solid #e2e8f0', background: '#f8fafc',
-              color: '#1e293b', fontSize: '13px', outline: 'none', boxSizing: 'border-box',
-            }} />
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
           {user ? (
             <div style={{ position: 'relative' }}>
-              <button onClick={() => setDropOpen(!dropOpen)} style={{
-                display: 'flex', alignItems: 'center', gap: '8px',
-                background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '6px 12px', cursor: 'pointer',
-              }}>
-                <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', color: '#fff' }}>
+              {!isMobile ? (
+                <button onClick={() => setDropOpen(!dropOpen)} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '6px 12px', cursor: 'pointer' }}>
+                  <div style={{ width: '26px', height: '26px', borderRadius: '50%', background: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', color: '#fff' }}>
+                    {user[0].toUpperCase()}
+                  </div>
+                  <span style={{ fontSize: '13px', color: '#1e293b', fontWeight: '600' }}>{user}</span>
+                  <span style={{ fontSize: '10px', color: '#94a3b8' }}>▼</span>
+                </button>
+              ) : (
+                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#f97316', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '700', color: '#fff', cursor: 'pointer' }}
+                  onClick={() => setDropOpen(!dropOpen)}>
                   {user[0].toUpperCase()}
                 </div>
-                <span style={{ fontSize: '13px', color: '#1e293b', fontWeight: '600' }}>{user}</span>
-                <span style={{ fontSize: '10px', color: '#94a3b8' }}>▼</span>
-              </button>
+              )}
               {dropOpen && (
-                <div style={{
-                  position: 'absolute', top: '44px', right: 0, background: '#fff',
-                  borderRadius: '12px', border: '1px solid #e2e8f0',
-                  boxShadow: '0 8px 32px rgba(0,0,0,0.12)', minWidth: '180px', zIndex: 300, overflow: 'hidden',
-                }}>
+                <div style={{ position: 'absolute', top: '44px', right: 0, background: '#fff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.12)', minWidth: '180px', zIndex: 300, overflow: 'hidden' }}>
                   {[['👤', 'My Profile'], ['📦', 'My Orders'], ['❤️', 'Wishlist'], ['⚙️', 'Settings']].map(([icon, label]) => (
-                    <button key={label} onClick={() => setDropOpen(false)} style={{
-                      width: '100%', padding: '10px 16px', textAlign: 'left',
-                      background: 'none', border: 'none', color: '#475569',
-                      cursor: 'pointer', fontSize: '13px', display: 'flex', gap: '10px', alignItems: 'center',
+                    <button key={label} onClick={() => { if (label === 'My Profile') onProfileClick(); setDropOpen(false); }} style={{
+                      width: '100%', padding: '10px 16px', textAlign: 'left', background: 'none', border: 'none',
+                      color: '#475569', cursor: 'pointer', fontSize: '13px', display: 'flex', gap: '10px', alignItems: 'center',
                     }}
                       onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
                       onMouseLeave={e => e.currentTarget.style.background = 'none'}>
@@ -459,11 +396,9 @@ const Navbar = ({ page, setPage, onCartClick, onAuthClick, onLogout, user, searc
                     </button>
                   ))}
                   <div style={{ borderTop: '1px solid #f1f5f9' }}>
-                    <button onClick={() => { onLogout(); setDropOpen(false); }} style={{
-                      width: '100%', padding: '10px 16px', textAlign: 'left',
-                      background: 'none', border: 'none', color: '#ef4444',
-                      cursor: 'pointer', fontSize: '13px', display: 'flex', gap: '10px', alignItems: 'center',
-                    }}>🚪 Logout</button>
+                    <button onClick={() => { onLogout(); setDropOpen(false); }} style={{ width: '100%', padding: '10px 16px', textAlign: 'left', background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '13px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                      🚪 Logout
+                    </button>
                   </div>
                 </div>
               )}
@@ -475,11 +410,7 @@ const Navbar = ({ page, setPage, onCartClick, onAuthClick, onLogout, user, searc
             </div>
           )}
 
-          <button onClick={onCartClick} style={{
-            background: '#f97316', color: 'white', border: 'none', borderRadius: '20px',
-            padding: '8px 16px', cursor: 'pointer', fontWeight: '700', fontSize: '14px',
-            display: 'flex', alignItems: 'center', gap: '6px',
-          }}>
+          <button onClick={onCartClick} style={{ background: '#f97316', color: 'white', border: 'none', borderRadius: '20px', padding: '8px 16px', cursor: 'pointer', fontWeight: '700', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '6px' }}>
             🛒
             {totalItems > 0 && (
               <span style={{ background: '#fff', color: '#f97316', borderRadius: '50%', width: '20px', height: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '800' }}>{totalItems}</span>
@@ -487,44 +418,103 @@ const Navbar = ({ page, setPage, onCartClick, onAuthClick, onLogout, user, searc
           </button>
 
           <button onClick={() => setMenuOpen(!menuOpen)} style={{
-            background: '#f8fafc', border: '1px solid #e2e8f0', color: '#475569',
-            width: '38px', height: '38px', borderRadius: '8px', cursor: 'pointer', fontSize: '18px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>{menuOpen ? '✕' : '☰'}</button>
+            background: menuOpen ? '#f97316' : '#f8fafc', border: menuOpen ? 'none' : '1px solid #e2e8f0',
+            color: menuOpen ? '#fff' : '#475569', width: '38px', height: '38px', borderRadius: '10px',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.3s', flexShrink: 0,
+          }}>
+            {menuOpen ? '✕' : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center' }}>
+                <span style={{ width: '18px', height: '2px', background: '#475569', borderRadius: '2px', display: 'block' }} />
+                <span style={{ width: '12px', height: '2px', background: '#f97316', borderRadius: '2px', display: 'block' }} />
+                <span style={{ width: '18px', height: '2px', background: '#475569', borderRadius: '2px', display: 'block' }} />
+              </div>
+            )}
+          </button>
         </div>
       </nav>
 
       {menuOpen && (
         <>
-          <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 150 }} />
-          <div style={{
-            position: 'fixed', top: '60px', left: 0, right: 0, zIndex: 160,
-            background: '#fff', padding: '1rem 1.5rem',
-            borderBottom: '1px solid #e2e8f0', boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-          }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', marginBottom: '10px' }}>
-              {pages.map(p => (
-                <button key={p} onClick={() => { setPage(p); setMenuOpen(false); }} style={{
-                  background: page === p ? '#f97316' : '#f8fafc',
-                  color: page === p ? '#fff' : '#475569',
-                  border: page === p ? '1px solid #f97316' : '1px solid #e2e8f0',
-                  borderRadius: '20px', padding: '6px 14px',
-                  cursor: 'pointer', fontSize: '13px', fontWeight: page === p ? '700' : '500',
-                }}>{p}</button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
+          <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 150, background: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(2px)' }} />
+          <div style={{ position: 'fixed', top: 0, right: 0, bottom: 0, width: '280px', zIndex: 160, background: '#fff', boxShadow: '-8px 0 32px rgba(0,0,0,0.15)', display: 'flex', flexDirection: 'column', animation: 'slideIn 0.25s ease' }}>
+            <style>{`@keyframes slideIn { from { transform: translateX(100%); } to { transform: translateX(0); } }`}</style>
+
+            <div style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)', padding: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <Logo height="34px" fallbackColor="#fff" fallbackColor2="#fed7aa" fallbackSize="18px" />
+                <button onClick={() => setMenuOpen(false)} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+              </div>
               {user ? (
-                <button onClick={() => { onLogout(); setMenuOpen(false); }} style={{ flex: 1, padding: '9px', background: '#fff7ed', color: '#f97316', border: '1px solid #f97316', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>
-                  Logout ({user})
-                </button>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ width: '40px', height: '40px', borderRadius: '50%', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: '900', color: '#fff', border: '2px solid rgba(255,255,255,0.4)' }}>
+                    {user[0].toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: '700', fontSize: '14px' }}>{user}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '12px' }}>Welcome back!</div>
+                  </div>
+                </div>
               ) : (
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button onClick={() => { onAuthClick('login'); setMenuOpen(false); }} style={{ flex: 1, padding: '8px', background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '600' }}>Login</button>
+                  <button onClick={() => { onAuthClick('register'); setMenuOpen(false); }} style={{ flex: 1, padding: '8px', background: '#fff', color: '#f97316', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>Register</button>
+                </div>
+              )}
+            </div>
+
+            <div style={{ padding: '1rem', flex: 1, overflowY: 'auto' }}>
+              <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '700', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '1px' }}>Navigation</div>
+              {[
+                { name: 'Home', icon: '🏠' }, { name: 'Products', icon: '🛍️' },
+                { name: 'About', icon: 'ℹ️' }, { name: 'Blog', icon: '📝' }, { name: 'Contact', icon: '📞' },
+              ].map(p => (
+                <button key={p.name} onClick={() => { setPage(p.name); setMenuOpen(false); }} style={{
+                  width: '100%', padding: '12px 14px', textAlign: 'left',
+                  background: page === p.name ? '#fff7ed' : 'none', border: 'none', borderRadius: '10px',
+                  color: page === p.name ? '#f97316' : '#475569', cursor: 'pointer', fontSize: '14px',
+                  fontWeight: page === p.name ? '700' : '500', display: 'flex', alignItems: 'center', gap: '12px',
+                  marginBottom: '4px', transition: 'all 0.2s',
+                }}
+                  onMouseEnter={e => { if (page !== p.name) e.currentTarget.style.background = '#f8fafc'; }}
+                  onMouseLeave={e => { if (page !== p.name) e.currentTarget.style.background = 'none'; }}>
+                  <span style={{ fontSize: '18px' }}>{p.icon}</span>
+                  {p.name}
+                  {page === p.name && <span style={{ marginLeft: 'auto', color: '#f97316' }}>▸</span>}
+                </button>
+              ))}
+
+              {user && (
                 <>
-                  <button onClick={() => { onAuthClick('login'); setMenuOpen(false); }} style={{ flex: 1, padding: '9px', background: '#f8fafc', color: '#1e293b', border: '1px solid #e2e8f0', borderRadius: '8px', cursor: 'pointer', fontSize: '13px' }}>Login</button>
-                  <button onClick={() => { onAuthClick('register'); setMenuOpen(false); }} style={{ flex: 1, padding: '9px', background: '#f97316', color: '#fff', border: 'none', borderRadius: '8px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>Register</button>
+                  <div style={{ color: '#94a3b8', fontSize: '11px', fontWeight: '700', margin: '16px 0 8px', textTransform: 'uppercase', letterSpacing: '1px' }}>Account</div>
+                  {[
+                    { icon: '👤', label: 'My Profile', action: () => { onProfileClick(); setMenuOpen(false); } },
+                    { icon: '📦', label: 'My Orders', action: () => { onProfileClick(); setMenuOpen(false); } },
+                    { icon: '❤️', label: 'Wishlist', action: () => setMenuOpen(false) },
+                  ].map(item => (
+                    <button key={item.label} onClick={item.action} style={{
+                      width: '100%', padding: '12px 14px', textAlign: 'left', background: 'none', border: 'none',
+                      borderRadius: '10px', color: '#475569', cursor: 'pointer', fontSize: '14px',
+                      fontWeight: '500', display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '4px',
+                    }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'none'}>
+                      <span style={{ fontSize: '18px' }}>{item.icon}</span>
+                      {item.label}
+                    </button>
+                  ))}
                 </>
               )}
             </div>
+
+            {user && (
+              <div style={{ padding: '1rem', borderTop: '1px solid #f1f5f9' }}>
+                <button onClick={() => { onLogout(); setMenuOpen(false); }} style={{
+                  width: '100%', padding: '12px', background: '#fee2e2', color: '#ef4444',
+                  border: '1px solid #fecaca', borderRadius: '10px', cursor: 'pointer',
+                  fontSize: '14px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                }}>🚪 Logout</button>
+              </div>
+            )}
           </div>
         </>
       )}
@@ -532,8 +522,7 @@ const Navbar = ({ page, setPage, onCartClick, onAuthClick, onLogout, user, searc
   );
 };
 
-
-// ── Auth Modal ────────────────────────────────────────────────────────────────
+// Auth Modal
 const AuthModal = ({ tab, onClose, onSuccess }) => {
   const [isLogin,  setIsLogin]  = useState(tab === 'login');
   const [username, setUsername] = useState('');
@@ -544,6 +533,8 @@ const AuthModal = ({ tab, onClose, onSuccess }) => {
 
   const handleSubmit = async () => {
     if (!username || !password) return setError('All fields required');
+    if (!isLogin && !email) return setError('Email is required for registration');
+    if (!isLogin && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return setError('Please enter a valid email');
     setLoading(true); setError('');
     try {
       if (isLogin) {
@@ -551,7 +542,6 @@ const AuthModal = ({ tab, onClose, onSuccess }) => {
         if (res.access) { setToken(res.access); onSuccess(username); onClose(); }
         else setError('Invalid username or password');
       } else {
-        if (!email) return setError('Email required') || setLoading(false);
         const res = await registerUser(username, email, password);
         if (res.id || res.username) {
           const lr = await loginUser(username, password);
@@ -594,134 +584,76 @@ const AuthModal = ({ tab, onClose, onSuccess }) => {
   );
 };
 
-
-// ── Payment Methods Config ────────────────────────────────────────────────────
+// Payment Methods Config
 const PAYMENT_METHODS = [
-  {
-    id: 'cod', label: 'Cash on Delivery', short: 'COD',
-    color: '#16a34a', bg: '#f0fdf4', border: '#86efac',
-    icon: '💵',
-    desc: 'পণ্য হাতে পেয়ে পেমেন্ট করুন',
-    instruction: null,
-  },
-  {
-    id: 'bkash', label: 'bKash', short: 'bKash',
-    color: '#E2136E', bg: '#fff0f7', border: '#fbcfe8',
-    icon: '📱',
-    number: '01700-000000', // আপনার bKash নম্বর দিন
-    desc: 'বিকাশে পেমেন্ট করুন',
-    instruction: 'Send Money',
-  },
-  {
-    id: 'nagad', label: 'Nagad', short: 'Nagad',
-    color: '#F47920', bg: '#fff7ed', border: '#fed7aa',
-    icon: '🟠',
-    number: '01700-000000', // আপনার Nagad নম্বর দিন
-    desc: 'নগদে পেমেন্ট করুন',
-    instruction: 'Send Money',
-  },
-  {
-    id: 'rocket', label: 'Rocket', short: 'Rocket',
-    color: '#8B2FC9', bg: '#faf5ff', border: '#d8b4fe',
-    icon: '🚀',
-    number: '01700-0000000', // আপনার Rocket নম্বর দিন (11 digits)
-    desc: 'রকেটে পেমেন্ট করুন',
-    instruction: 'Send Money',
-  },
-  {
-    id: 'upay', label: 'Upay', short: 'Upay',
-    color: '#0ea5e9', bg: '#f0f9ff', border: '#bae6fd',
-    icon: '💙',
-    number: '01700-000000', // আপনার Upay নম্বর দিন
-    desc: 'উপায়ে পেমেন্ট করুন',
-    instruction: 'Send Money',
-  },
-  {
-    id: 'ssl', label: 'SSL Commerz', short: 'SSL',
-    color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe',
-    icon: '🔒',
-    desc: 'Card/Net Banking দিয়ে পেমেন্ট',
-    instruction: null,
-  },
+  { id: 'cod', label: 'Cash on Delivery', short: 'COD', color: '#16a34a', bg: '#f0fdf4', border: '#86efac', icon: '💵', desc: 'পণ্য পেয়ে হাতে হাতে পেমেন্ট করুন', instruction: null },
+  { id: 'bkash', label: 'bKash', short: 'bKash', color: '#E2136E', bg: '#fff0f7', border: '#fbcfe8', icon: '📱', number: '01700-000000', desc: 'বিকাশে পেমেন্ট করুন', instruction: 'Send Money' },
+  { id: 'nagad', label: 'Nagad', short: 'Nagad', color: '#F47920', bg: '#fff7ed', border: '#fed7aa', icon: '📱', number: '01700-000000', desc: 'নগদে পেমেন্ট করুন', instruction: 'Send Money' },
+  { id: 'rocket', label: 'Rocket', short: 'Rocket', color: '#8B2FC9', bg: '#faf5ff', border: '#d8b4fe', icon: '📱', number: '01700-0000000', desc: 'রকেটে পেমেন্ট করুন', instruction: 'Send Money' },
+  { id: 'upay', label: 'Upay', short: 'Upay', color: '#0ea5e9', bg: '#f0f9ff', border: '#bae6fd', icon: '📱', number: '01700-000000', desc: 'উপায়ে পেমেন্ট করুন', instruction: 'Send Money' },
+  { id: 'ssl', label: 'SSL Commerz', short: 'SSL', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe', icon: '💳', desc: 'Card/Net Banking দিয়ে পেমেন্ট', instruction: null },
 ];
 
-// ── Order Modal ───────────────────────────────────────────────────────────────
+// Order Modal
 const OrderModal = ({ product, onClose, onOrder }) => {
-  const [qty,      setQty]      = useState(1);
-  const [address,  setAddress]  = useState('');
-  const [phone,    setPhone]    = useState('');
-  const [method,   setMethod]   = useState('cod');
-  const [zone,     setZone]     = useState('inside');
-  const [loading,  setLoading]  = useState(false);
-  const [step,     setStep]     = useState(1); // 1=form, 2=payment instruction, 3=success
-  const [imgFailed,setImgFailed]= useState(false);
-  const [trxId,    setTrxId]    = useState('');
+  const [qty,       setQty]      = useState(1);
+  const [address,   setAddress]  = useState('');
+  const [phone,     setPhone]    = useState('');
+  const [email,     setEmail]    = useState('');
+  const [method,    setMethod]   = useState('cod');
+  const [zone,      setZone]     = useState('inside');
+  const [loading,   setLoading]  = useState(false);
+  const [step,      setStep]     = useState(1);
+  const [imgFailed, setImgFailed]= useState(false);
+  const [trxId,     setTrxId]    = useState('');
 
   const deliveryCharge = zone === 'inside' ? 80 : 150;
-  const subtotalBDT    = Math.round(parseFloat(product.price) * qty * 110);
+  const subtotalBDT    = Math.round(parseFloat(product.price) * qty);
   const totalBDT       = subtotalBDT + deliveryCharge;
-  const productImgSrc  = getImg(product.image);
+  const productImgSrc  = getImg(product.image, product.image_url);
   const selectedMethod = PAYMENT_METHODS.find(m => m.id === method);
 
-  const inp = {
-    width: '100%', padding: '11px', borderRadius: '10px',
-    border: '1.5px solid #e2e8f0', background: '#f8fafc',
-    color: '#1e293b', fontSize: '14px', outline: 'none',
-    boxSizing: 'border-box', marginBottom: '12px',
-  };
+  const inp = { width: '100%', padding: '11px', borderRadius: '10px', border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#1e293b', fontSize: '14px', outline: 'none', boxSizing: 'border-box', marginBottom: '12px' };
 
   const handleNext = () => {
-    if (!address.trim()) return alert('ডেলিভারি ঠিকানা দিন');
-    if (!/^01[3-9]\d{8}$/.test(phone)) return alert('সঠিক মোবাইল নম্বর দিন (01XXXXXXXXX)');
-    if (method === 'cod' || method === 'ssl') {
-      handleConfirm();
-    } else {
-      setStep(2); // show payment instruction
-    }
+    if (!address.trim()) return alert('ঠিকানা দিতে হবে');
+    if (!/^01[3-9]\d{8}$/.test(phone)) return alert('সঠিক ফোন নম্বর দিন (01XXXXXXXXX)');
+    if (method === 'cod' || method === 'ssl') { handleConfirm(); } else { setStep(2); }
   };
 
   const handleConfirm = async () => {
     setLoading(true);
-    await onOrder(product, qty, address, phone, method, zone, deliveryCharge);
+    await onOrder(product, qty, address, phone, email, method, zone, deliveryCharge);
     setLoading(false);
     setStep(3);
   };
 
   const handlePaymentDone = async () => {
-    if (!trxId.trim()) return alert('Transaction ID / রেফারেন্স নম্বর দিন');
+    if (!trxId.trim()) return alert('Transaction ID দিতে হবে');
     setLoading(true);
-    await onOrder(product, qty, address, phone, method, zone, deliveryCharge, trxId);
+    await onOrder(product, qty, address, phone, email, method, zone, deliveryCharge, trxId);
     setLoading(false);
     setStep(3);
   };
 
-  // ── Step 3: Success ──
   if (step === 3) return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', padding: '1rem' }}>
       <div style={{ background: '#fff', borderRadius: '20px', padding: '2.5rem 2rem', width: '100%', maxWidth: '400px', textAlign: 'center', boxShadow: '0 24px 64px rgba(0,0,0,0.18)' }}>
-        <div style={{ fontSize: '72px', marginBottom: '12px', animation: 'bounce 0.5s' }}>✅</div>
-        <h2 style={{ color: '#16a34a', fontSize: '24px', fontWeight: '900', marginBottom: '8px' }}>অর্ডার সম্পন্ন!</h2>
-        <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px', lineHeight: '1.7' }}>
-          আপনার অর্ডার সফলভাবে গ্রহণ করা হয়েছে।<br />
-          শীঘ্রই আমরা আপনার সাথে যোগাযোগ করব। 🎉
-        </p>
+        <div style={{ fontSize: '72px', marginBottom: '12px' }}>✅</div>
+        <h2 style={{ color: '#16a34a', fontSize: '24px', fontWeight: '900', marginBottom: '8px' }}>অর্ডার সফল!</h2>
+        <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '20px', lineHeight: '1.7' }}>আপনার অর্ডারটি সফলভাবে প্লেস হয়েছে।<br />শীঘ্রই আমরা আপনার সাথে যোগাযোগ করব 🎉</p>
         <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '12px', padding: '14px', marginBottom: '20px' }}>
           <div style={{ color: '#16a34a', fontWeight: '700', fontSize: '14px' }}>📦 {product.name}</div>
           <div style={{ color: '#f97316', fontWeight: '800', fontSize: '18px', marginTop: '4px' }}>৳{totalBDT}</div>
         </div>
-        <button onClick={onClose} style={{ background: '#f97316', color: '#fff', border: 'none', borderRadius: '12px', padding: '12px 32px', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>
-          বাড়ি ফিরুন 🏠
-        </button>
+        <button onClick={onClose} style={{ background: '#f97316', color: '#fff', border: 'none', borderRadius: '12px', padding: '12px 32px', fontWeight: '700', fontSize: '15px', cursor: 'pointer' }}>শপিং চালিয়ে যান 🛒</button>
       </div>
     </div>
   );
 
-  // ── Step 2: Payment Instruction ──
   if (step === 2) return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', padding: '1rem' }}>
       <div style={{ background: '#fff', borderRadius: '20px', padding: '0', width: '100%', maxWidth: '440px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)', maxHeight: '92vh', overflowY: 'auto' }}>
-
-        {/* Header */}
         <div style={{ background: selectedMethod.color, borderRadius: '20px 20px 0 0', padding: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '28px' }}>{selectedMethod.icon}</span>
@@ -732,77 +664,46 @@ const OrderModal = ({ product, onClose, onOrder }) => {
           </div>
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', fontSize: '16px' }}>✕</button>
         </div>
-
         <div style={{ padding: '1.5rem' }}>
-          {/* Amount Box */}
           <div style={{ background: selectedMethod.bg, border: `2px solid ${selectedMethod.border}`, borderRadius: '14px', padding: '16px', marginBottom: '16px', textAlign: 'center' }}>
-            <div style={{ color: '#64748b', fontSize: '13px', marginBottom: '4px' }}>পরিশোধ করুন</div>
+            <div style={{ color: '#64748b', fontSize: '13px', marginBottom: '4px' }}>পেমেন্ট করুন</div>
             <div style={{ color: selectedMethod.color, fontWeight: '900', fontSize: '32px' }}>৳{totalBDT}</div>
             <div style={{ color: '#94a3b8', fontSize: '12px', marginTop: '4px' }}>Subtotal ৳{subtotalBDT} + Delivery ৳{deliveryCharge}</div>
           </div>
-
-          {/* Steps */}
           <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '16px', marginBottom: '16px' }}>
             <div style={{ color: '#1e293b', fontWeight: '700', fontSize: '14px', marginBottom: '12px' }}>📋 পেমেন্ট করার নিয়ম:</div>
             {[
               `আপনার ${selectedMethod.label} অ্যাপ খুলুন`,
-              `"${selectedMethod.instruction}" অপশনে যান`,
+              `"${selectedMethod.instruction}" অপশন বাছুন`,
               `এই নম্বরে পাঠান: ${selectedMethod.number}`,
               `পরিমাণ: ৳${totalBDT} পাঠান`,
               `Transaction ID / Reference নম্বর কপি করুন`,
-              `নিচে Transaction ID দিয়ে কনফার্ম করুন`,
-            ].map((step, i) => (
+              `নিচে Transaction ID দিয়ে অর্ডার নিশ্চিত করুন`,
+            ].map((s, i) => (
               <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start', marginBottom: '8px' }}>
                 <div style={{ width: '22px', height: '22px', borderRadius: '50%', background: selectedMethod.color, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: '700', flexShrink: 0, marginTop: '1px' }}>{i + 1}</div>
-                <div style={{ color: '#475569', fontSize: '13px', lineHeight: '1.5' }}>{step}</div>
+                <div style={{ color: '#475569', fontSize: '13px', lineHeight: '1.5' }}>{s}</div>
               </div>
             ))}
           </div>
-
-          {/* Number Copy Box */}
           <div style={{ background: selectedMethod.bg, border: `1.5px dashed ${selectedMethod.color}`, borderRadius: '12px', padding: '14px', marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
               <div style={{ color: '#64748b', fontSize: '12px' }}>{selectedMethod.label} নম্বর</div>
               <div style={{ color: selectedMethod.color, fontWeight: '900', fontSize: '20px', letterSpacing: '1px' }}>{selectedMethod.number}</div>
             </div>
-            <button
-              onClick={() => { navigator.clipboard.writeText(selectedMethod.number); alert('নম্বর কপি হয়েছে!'); }}
-              style={{ background: selectedMethod.color, color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>
-              📋 কপি
-            </button>
+            <button onClick={() => { navigator.clipboard.writeText(selectedMethod.number); alert('নম্বর কপি হয়েছে!'); }} style={{ background: selectedMethod.color, color: '#fff', border: 'none', borderRadius: '8px', padding: '8px 14px', cursor: 'pointer', fontSize: '13px', fontWeight: '700' }}>📋 কপি</button>
           </div>
-
-          {/* Transaction ID Input */}
-          <label style={{ color: '#1e293b', fontSize: '13px', fontWeight: '700', display: 'block', marginBottom: '8px' }}>
-            ✅ Transaction ID / Reference নম্বর *
-          </label>
-          <input
-            type="text"
-            placeholder="e.g. 8N7A2Q3B1X..."
-            value={trxId}
-            onChange={e => setTrxId(e.target.value)}
-            style={{ ...inp, border: `1.5px solid ${selectedMethod.color}`, marginBottom: '16px' }}
-          />
-
-          {/* Order Summary */}
+          <label style={{ color: '#1e293b', fontSize: '13px', fontWeight: '700', display: 'block', marginBottom: '8px' }}>✅ Transaction ID / Reference নম্বর *</label>
+          <input type="text" placeholder="e.g. 8N7A2Q3B1X..." value={trxId} onChange={e => setTrxId(e.target.value)} style={{ ...inp, border: `1.5px solid ${selectedMethod.color}`, marginBottom: '16px' }} />
           <div style={{ background: '#f8fafc', borderRadius: '10px', padding: '12px', marginBottom: '16px', fontSize: '13px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', marginBottom: '4px' }}>
-              <span>📦 {product.name}</span><span>x{qty}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', marginBottom: '4px' }}>
-              <span>📍 {address.slice(0, 30)}{address.length > 30 ? '...' : ''}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', marginBottom: '4px' }}>
-              <span>📞 {phone}</span>
-            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', marginBottom: '4px' }}><span>📦 {product.name}</span><span>x{qty}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', marginBottom: '4px' }}><span>📍 {address.slice(0, 30)}{address.length > 30 ? '...' : ''}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#64748b', marginBottom: '4px' }}><span>📞 {phone}</span></div>
           </div>
-
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={() => setStep(1)} style={{ flex: 1, padding: '12px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '14px' }}>
-              ← ফিরে যান
-            </button>
+            <button onClick={() => setStep(1)} style={{ flex: 1, padding: '12px', background: '#f1f5f9', color: '#475569', border: 'none', borderRadius: '10px', fontWeight: '700', cursor: 'pointer', fontSize: '14px' }}>◀ আগে যান</button>
             <button onClick={handlePaymentDone} disabled={loading} style={{ flex: 2, padding: '12px', background: selectedMethod.color, color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '700', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '14px', opacity: loading ? 0.7 : 1 }}>
-              {loading ? 'Processing...' : `✅ পেমেন্ট করেছি`}
+              {loading ? 'Processing...' : '✅ অর্ডার নিশ্চিত করুন'}
             </button>
           </div>
         </div>
@@ -810,30 +711,22 @@ const OrderModal = ({ product, onClose, onOrder }) => {
     </div>
   );
 
-  // ── Step 1: Order Form ──
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', padding: '1rem' }}>
       <div style={{ background: '#fff', borderRadius: '20px', width: '100%', maxWidth: '480px', boxShadow: '0 24px 64px rgba(0,0,0,0.18)', maxHeight: '92vh', overflowY: 'auto' }}>
-
-        {/* Header */}
         <div style={{ background: 'linear-gradient(135deg, #f97316, #ea580c)', borderRadius: '20px 20px 0 0', padding: '1.2rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ color: '#fff', fontWeight: '900', fontSize: '18px' }}>⚡ Order Now</div>
           <button onClick={onClose} style={{ background: 'rgba(255,255,255,0.2)', border: 'none', color: '#fff', width: '32px', height: '32px', borderRadius: '50%', cursor: 'pointer', fontSize: '16px' }}>✕</button>
         </div>
-
         <div style={{ padding: '1.5rem' }}>
-          {/* Product Info */}
           <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '12px', marginBottom: '16px', display: 'flex', gap: '12px', alignItems: 'center', border: '1px solid #e2e8f0' }}>
             <div style={{ width: '60px', height: '60px', borderRadius: '10px', overflow: 'hidden', flexShrink: 0, background: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {productImgSrc && !imgFailed
-                ? <img src={productImgSrc} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setImgFailed(true)} alt="" />
-                : <span style={{ fontSize: '28px' }}>🛍️</span>}
+              {productImgSrc && !imgFailed ? <img src={productImgSrc} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => setImgFailed(true)} alt="" /> : <span style={{ fontSize: '28px' }}>📦</span>}
             </div>
             <div style={{ flex: 1 }}>
               <div style={{ color: '#1e293b', fontWeight: '700', fontSize: '14px' }}>{product.name}</div>
-              <div style={{ color: '#f97316', fontWeight: '800', fontSize: '16px' }}>৳{Math.round(parseFloat(product.price) * 110)}</div>
+              <div style={{ color: '#f97316', fontWeight: '800', fontSize: '16px' }}>৳{Math.round(parseFloat(product.price))}</div>
             </div>
-            {/* Qty */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <button onClick={() => setQty(q => Math.max(1, q - 1))} style={{ width: '28px', height: '28px', background: '#f1f5f9', border: '1px solid #e2e8f0', borderRadius: '6px', cursor: 'pointer', fontSize: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
               <span style={{ fontWeight: '700', fontSize: '16px', minWidth: '20px', textAlign: 'center' }}>{qty}</span>
@@ -841,24 +734,22 @@ const OrderModal = ({ product, onClose, onOrder }) => {
             </div>
           </div>
 
-          {/* Phone */}
-          <label style={{ color: '#64748b', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>📞 মোবাইল নম্বর *</label>
+          <label style={{ color: '#64748b', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>📞 ফোন নম্বর *</label>
           <input type="tel" placeholder="01XXXXXXXXX" value={phone} onChange={e => setPhone(e.target.value)} style={inp} />
 
-          {/* Address */}
+          <label style={{ color: '#64748b', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>✉️ Email (Confirmation এর জন্য)</label>
+          <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} style={inp} />
+
           <label style={{ color: '#64748b', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '6px' }}>📍 ডেলিভারি ঠিকানা *</label>
           <textarea placeholder="বাড়ি নং, রাস্তা, এলাকা, জেলা..." value={address} onChange={e => setAddress(e.target.value)} rows={3} style={{ ...inp, resize: 'none' }} />
 
-          {/* Delivery Zone */}
-          <label style={{ color: '#64748b', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '8px' }}>🚚 ডেলিভারি জোন</label>
+          <label style={{ color: '#64748b', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '8px' }}>🚚 ডেলিভারি এলাকা</label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>
-            {[{ id: 'inside', label: 'ঢাকার ভেতরে', charge: 80, days: '১-২ দিন', icon: '🏙️' }, { id: 'outside', label: 'ঢাকার বাইরে', charge: 150, days: '৩-৫ দিন', icon: '🗺️' }].map(z => (
-              <button key={z.id} onClick={() => setZone(z.id)} style={{
-                padding: '12px', borderRadius: '12px', cursor: 'pointer', textAlign: 'left',
-                border: zone === z.id ? '2px solid #f97316' : '2px solid #e2e8f0',
-                background: zone === z.id ? '#fff7ed' : '#f8fafc',
-                transition: 'all 0.2s',
-              }}>
+            {[
+              { id: 'inside', label: 'ঢাকার ভেতরে', charge: 80, days: '১-২ দিন', icon: '🏙️' },
+              { id: 'outside', label: 'ঢাকার বাইরে', charge: 150, days: '৩-৫ দিন', icon: '🗺️' }
+            ].map(z => (
+              <button key={z.id} onClick={() => setZone(z.id)} style={{ padding: '12px', borderRadius: '12px', cursor: 'pointer', textAlign: 'left', border: zone === z.id ? '2px solid #f97316' : '2px solid #e2e8f0', background: zone === z.id ? '#fff7ed' : '#f8fafc', transition: 'all 0.2s' }}>
                 <div style={{ fontSize: '18px', marginBottom: '4px' }}>{z.icon}</div>
                 <div style={{ color: zone === z.id ? '#f97316' : '#1e293b', fontWeight: '700', fontSize: '13px' }}>{z.label}</div>
                 <div style={{ color: '#f97316', fontWeight: '800', fontSize: '16px' }}>৳{z.charge}</div>
@@ -867,23 +758,16 @@ const OrderModal = ({ product, onClose, onOrder }) => {
             ))}
           </div>
 
-          {/* Payment Methods */}
           <label style={{ color: '#64748b', fontSize: '13px', fontWeight: '600', display: 'block', marginBottom: '10px' }}>💳 পেমেন্ট পদ্ধতি</label>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '8px', marginBottom: '16px' }}>
             {PAYMENT_METHODS.map(m => (
-              <button key={m.id} onClick={() => setMethod(m.id)} style={{
-                padding: '10px 6px', borderRadius: '12px', cursor: 'pointer', textAlign: 'center',
-                border: method === m.id ? `2px solid ${m.color}` : '2px solid #e2e8f0',
-                background: method === m.id ? m.bg : '#f8fafc',
-                transition: 'all 0.2s',
-              }}>
+              <button key={m.id} onClick={() => setMethod(m.id)} style={{ padding: '10px 6px', borderRadius: '12px', cursor: 'pointer', textAlign: 'center', border: method === m.id ? `2px solid ${m.color}` : '2px solid #e2e8f0', background: method === m.id ? m.bg : '#f8fafc', transition: 'all 0.2s' }}>
                 <div style={{ fontSize: '20px', marginBottom: '4px' }}>{m.icon}</div>
                 <div style={{ color: method === m.id ? m.color : '#64748b', fontWeight: method === m.id ? '700' : '500', fontSize: '11px' }}>{m.short}</div>
               </button>
             ))}
           </div>
 
-          {/* Selected method info */}
           {selectedMethod && (
             <div style={{ background: selectedMethod.bg, border: `1px solid ${selectedMethod.border}`, borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <span style={{ fontSize: '20px' }}>{selectedMethod.icon}</span>
@@ -894,7 +778,6 @@ const OrderModal = ({ product, onClose, onOrder }) => {
             </div>
           )}
 
-          {/* Total Summary */}
           <div style={{ background: 'linear-gradient(135deg, #fff7ed, #fff)', border: '1.5px solid #fed7aa', borderRadius: '14px', padding: '14px', marginBottom: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', color: '#94a3b8', marginBottom: '6px' }}>
               <span>Subtotal ({qty} item)</span><span>৳{subtotalBDT}</span>
@@ -908,13 +791,8 @@ const OrderModal = ({ product, onClose, onOrder }) => {
             </div>
           </div>
 
-          <button onClick={handleNext} disabled={loading} style={{
-            width: '100%', padding: '14px', background: 'linear-gradient(135deg, #f97316, #ea580c)',
-            color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800',
-            cursor: loading ? 'not-allowed' : 'pointer', fontSize: '16px',
-            opacity: loading ? 0.7 : 1, boxShadow: '0 4px 16px rgba(249,115,22,0.4)',
-          }}>
-            {loading ? '⏳ Processing...' : method === 'cod' ? '✅ অর্ডার কনফার্ম করুন' : `💳 ${selectedMethod?.label} দিয়ে পেমেন্ট করুন →`}
+          <button onClick={handleNext} disabled={loading} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg, #f97316, #ea580c)', color: 'white', border: 'none', borderRadius: '12px', fontWeight: '800', cursor: loading ? 'not-allowed' : 'pointer', fontSize: '16px', opacity: loading ? 0.7 : 1, boxShadow: '0 4px 16px rgba(249,115,22,0.4)' }}>
+            {loading ? '⏳ Processing...' : method === 'cod' ? '✅ অর্ডার নিশ্চিত করুন' : `💳 ${selectedMethod?.label} দিয়ে পেমেন্ট করুন ▶`}
           </button>
         </div>
       </div>
@@ -922,14 +800,18 @@ const OrderModal = ({ product, onClose, onOrder }) => {
   );
 };
 
-
-// ── Pages ─────────────────────────────────────────────────────────────────────
+// Pages
 const AboutPage = () => (
   <div style={{ maxWidth: '800px', margin: '3rem auto', padding: '0 1.5rem' }}>
-    <h1 style={{ color: '#1e293b', fontSize: '32px', fontWeight: '900', marginBottom: '1rem' }}>About <span style={{ color: '#f97316' }}>ShopBD</span></h1>
-    <p style={{ color: '#64748b', lineHeight: '1.8', marginBottom: '2rem' }}>ShopBD is Bangladesh's trusted online shopping destination offering quality products at the best prices.</p>
+    <h1 style={{ color: '#1e293b', fontSize: '32px', fontWeight: '900', marginBottom: '1rem' }}>About <span style={{ color: '#f97316' }}>IMX E-Shop</span></h1>
+    <p style={{ color: '#64748b', lineHeight: '1.8', marginBottom: '2rem' }}>IMX E-Shop is Bangladesh's trusted online shopping destination offering quality products at the best prices.</p>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-      {[{ icon: '🚚', title: 'Fast Delivery', desc: 'Delivered within 2-3 working days' }, { icon: '🔒', title: 'Secure Payment', desc: 'bKash, SSL, COD all accepted' }, { icon: '↩️', title: 'Easy Returns', desc: '7-day hassle-free return policy' }, { icon: '🎧', title: '24/7 Support', desc: 'Always here to help you' }].map(item => (
+      {[
+        { icon: '🚚', title: 'Fast Delivery', desc: 'Delivered within 2-3 working days' },
+        { icon: '🔒', title: 'Secure Payment', desc: 'bKash, SSL, COD all accepted' },
+        { icon: '↩️', title: 'Easy Returns', desc: '7-day hassle-free return policy' },
+        { icon: '💬', title: '24/7 Support', desc: 'Always here to help you' }
+      ].map(item => (
         <div key={item.title} style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', border: '1px solid #e2e8f0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
           <div style={{ fontSize: '32px', marginBottom: '8px' }}>{item.icon}</div>
           <h3 style={{ color: '#1e293b', marginBottom: '6px', fontWeight: '700' }}>{item.title}</h3>
@@ -944,7 +826,11 @@ const BlogPage = () => (
   <div style={{ maxWidth: '900px', margin: '3rem auto', padding: '0 1.5rem' }}>
     <h1 style={{ color: '#1e293b', fontSize: '32px', fontWeight: '900', marginBottom: '2rem' }}>Blog & <span style={{ color: '#f97316' }}>News</span></h1>
     <div style={{ display: 'grid', gap: '1.5rem' }}>
-      {[{ title: 'Top 10 Fashion Trends 2024', date: 'Apr 10, 2026', tag: 'Fashion' }, { title: 'How to Choose the Right Footwear', date: 'Apr 8, 2026', tag: 'Tips' }, { title: 'New Arrivals This Season', date: 'Apr 5, 2026', tag: 'Products' }].map(post => (
+      {[
+        { title: 'Top 10 Fashion Trends 2024', date: 'Apr 10, 2026', tag: 'Fashion' },
+        { title: 'How to Choose the Right Footwear', date: 'Apr 8, 2026', tag: 'Tips' },
+        { title: 'New Arrivals This Season', date: 'Apr 5, 2026', tag: 'Products' }
+      ].map(post => (
         <div key={post.title} style={{ background: '#fff', borderRadius: '12px', padding: '1.5rem', border: '1px solid #e2e8f0', cursor: 'pointer', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
           <span style={{ background: '#fff7ed', color: '#f97316', fontSize: '11px', padding: '3px 10px', borderRadius: '20px', fontWeight: '700' }}>{post.tag}</span>
           <h3 style={{ color: '#1e293b', fontSize: '18px', fontWeight: '700', margin: '10px 0 6px' }}>{post.title}</h3>
@@ -959,7 +845,11 @@ const ContactPage = () => (
   <div style={{ maxWidth: '600px', margin: '3rem auto', padding: '0 1.5rem' }}>
     <h1 style={{ color: '#1e293b', fontSize: '32px', fontWeight: '900', marginBottom: '2rem' }}>Contact <span style={{ color: '#f97316' }}>Us</span></h1>
     <div style={{ background: '#fff', borderRadius: '16px', padding: '2rem', border: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      {[{ label: 'Name', type: 'text', placeholder: 'Your name' }, { label: 'Email', type: 'email', placeholder: 'your@email.com' }, { label: 'Subject', type: 'text', placeholder: 'Subject' }].map(f => (
+      {[
+        { label: 'Name', type: 'text', placeholder: 'Your name' },
+        { label: 'Email', type: 'email', placeholder: 'your@email.com' },
+        { label: 'Subject', type: 'text', placeholder: 'Subject' }
+      ].map(f => (
         <div key={f.label}>
           <label style={{ color: '#64748b', fontSize: '13px', display: 'block', marginBottom: '6px' }}>{f.label}</label>
           <input type={f.type} placeholder={f.placeholder} style={{ width: '100%', padding: '11px 14px', borderRadius: '10px', border: '1.5px solid #e2e8f0', background: '#f8fafc', color: '#1e293b', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
@@ -974,67 +864,74 @@ const ContactPage = () => (
   </div>
 );
 
-
-// ── Footer ────────────────────────────────────────────────────────────────────
-const Footer = ({ setPage }) => (
-  <footer style={{ background: '#1e293b', borderTop: '1px solid #334155', padding: '2.5rem 1.5rem 1.5rem', marginTop: '4rem' }}>
-    <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '2rem', marginBottom: '2rem' }}>
-      <div>
-        <h3 style={{ fontSize: '20px', fontWeight: '900', marginBottom: '10px' }}>
-          <span style={{ color: '#f97316' }}>Shop</span><span style={{ color: '#fff' }}>BD</span>
-        </h3>
-        <p style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.7' }}>Bangladesh's trusted online shopping destination.</p>
-        <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
-          {['bKash', 'Nagad', 'Rocket', 'Visa', 'Master', 'COD'].map(s => (
-            <span key={s} style={{ background: 'rgba(255,255,255,0.1)', color: '#94a3b8', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>{s}</span>
+// Footer
+const Footer = ({ setPage }) => {
+  const isMobile = useIsMobile();
+  return (
+    <footer style={{ background: '#1e293b', borderTop: '1px solid #334155', padding: '2.5rem 1.5rem 1.5rem', marginTop: '4rem' }}>
+      <div style={{ maxWidth: '1200px', margin: '0 auto', display: 'grid', gridTemplateColumns: isMobile ? '1fr' : 'repeat(auto-fit, minmax(160px, 1fr))', gap: '2rem', marginBottom: '2rem' }}>
+        <div>
+          <div style={{ marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Logo height="40px" fallbackColor="#f97316" fallbackColor2="#fff" />
+              <span style={{ fontSize: '16px', fontWeight: '900' }}>
+                <span style={{ color: '#f97316' }}>IMX </span>
+                <span style={{ color: '#fff' }}>E-Shop</span>
+  </span>
+</div>
+          <p style={{ color: '#94a3b8', fontSize: '13px', lineHeight: '1.7' }}>Bangladesh's trusted online shopping destination.</p>
+          <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
+            {['bKash', 'Nagad', 'Rocket', 'Visa', 'Master', 'COD'].map(s => (
+              <span key={s} style={{ background: 'rgba(255,255,255,0.1)', color: '#94a3b8', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>{s}</span>
+            ))}
+          </div>
+        </div>
+        {[
+          { title: 'Quick Links', links: ['Home', 'Products', 'About', 'Blog', 'Contact'] },
+          { title: 'Categories', links: ['Electronics', 'Fashion', 'Beauty', 'Footwear', 'Accessories'] },
+        ].map(col => (
+          <div key={col.title}>
+            <h4 style={{ color: '#fff', fontSize: '14px', fontWeight: '700', marginBottom: '12px' }}>{col.title}</h4>
+            {col.links.map(link => (
+              <div key={link} onClick={() => setPage && setPage(link)} style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '8px', cursor: 'pointer' }}
+                onMouseEnter={e => e.target.style.color = '#f97316'}
+                onMouseLeave={e => e.target.style.color = '#94a3b8'}>▸ {link}</div>
+            ))}
+          </div>
+        ))}
+        <div>
+          <h4 style={{ color: '#fff', fontSize: '14px', fontWeight: '700', marginBottom: '12px' }}>Contact</h4>
+          {[['📍', 'Dhaka, Bangladesh'], ['📞', '01700-000000'], ['✉️', 'support@imxeshop.com'], ['🕐', 'Sat-Thu: 9AM-6PM']].map(([icon, text]) => (
+            <div key={text} style={{ display: 'flex', gap: '8px', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>{icon} {text}</div>
           ))}
         </div>
       </div>
-      {[
-        { title: 'Quick Links', links: ['Home', 'Products', 'About', 'Blog', 'Contact'] },
-        { title: 'Categories', links: ['Electronics', 'Fashion', 'Beauty', 'Footwear', 'Accessories'] },
-      ].map(col => (
-        <div key={col.title}>
-          <h4 style={{ color: '#fff', fontSize: '14px', fontWeight: '700', marginBottom: '12px' }}>{col.title}</h4>
-          {col.links.map(link => (
-            <div key={link} onClick={() => setPage && setPage(link)} style={{ color: '#94a3b8', fontSize: '13px', marginBottom: '8px', cursor: 'pointer' }}
+      <div style={{ borderTop: '1px solid #334155', paddingTop: '1.2rem', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
+        <p style={{ color: '#475569', fontSize: '12px' }}>© 2026 IMX E-Shop. All rights reserved.</p>
+        <div style={{ display: 'flex', gap: '16px' }}>
+          {['Privacy', 'Terms', 'Refund'].map(item => (
+            <span key={item} style={{ color: '#475569', fontSize: '12px', cursor: 'pointer' }}
               onMouseEnter={e => e.target.style.color = '#f97316'}
-              onMouseLeave={e => e.target.style.color = '#94a3b8'}>→ {link}</div>
+              onMouseLeave={e => e.target.style.color = '#475569'}>{item}</span>
           ))}
         </div>
-      ))}
-      <div>
-        <h4 style={{ color: '#fff', fontSize: '14px', fontWeight: '700', marginBottom: '12px' }}>Contact</h4>
-        {[['📍', 'Dhaka, Bangladesh'], ['📞', '01700-000000'], ['✉️', 'support@shopbd.com'], ['🕐', 'Sat-Thu: 9AM-6PM']].map(([icon, text]) => (
-          <div key={text} style={{ display: 'flex', gap: '8px', color: '#94a3b8', fontSize: '13px', marginBottom: '8px' }}>{icon} {text}</div>
-        ))}
       </div>
-    </div>
-    <div style={{ borderTop: '1px solid #334155', paddingTop: '1.2rem', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem' }}>
-      <p style={{ color: '#475569', fontSize: '12px' }}>© 2026 ShopBD. All rights reserved.</p>
-      <div style={{ display: 'flex', gap: '16px' }}>
-        {['Privacy', 'Terms', 'Refund'].map(item => (
-          <span key={item} style={{ color: '#475569', fontSize: '12px', cursor: 'pointer' }}
-            onMouseEnter={e => e.target.style.color = '#f97316'}
-            onMouseLeave={e => e.target.style.color = '#475569'}>{item}</span>
-        ))}
-      </div>
-    </div>
-  </footer>
-);
+    </footer>
+  );
+};
 
-
-// ── Home Page ─────────────────────────────────────────────────────────────────
+// Home Page
 const SHOW_PER_CAT = 8;
 
-const HomePage = ({ products, onOrderNow, onSetPage }) => {
+const HomePage = ({ products, onOrderNow, onSetPage, search }) => {
   const { addToCart } = useCart();
+  const isMobile = useIsMobile();
   const [category, setCategory] = useState('All');
   const [sortBy,   setSortBy]   = useState('default');
   const [showAll,  setShowAll]  = useState(false);
 
   const filtered = products
     .filter(p => category === 'All' || (p.category?.name || 'Other') === category)
+    .filter(p => !search || p.name.toLowerCase().includes(search.toLowerCase()))
     .sort((a, b) => {
       if (sortBy === 'price_asc')  return a.price - b.price;
       if (sortBy === 'price_desc') return b.price - a.price;
@@ -1049,17 +946,15 @@ const HomePage = ({ products, onOrderNow, onSetPage }) => {
       <Carousel products={products} />
       <FeatureStrip />
       {products.length > 0 && <Marquee products={products} />}
-
       <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '2rem 1.5rem' }}>
         <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px' }}>
             <div style={{ height: '2px', width: '40px', background: '#f97316' }} />
-            <h2 style={{ color: '#1e293b', fontSize: '24px', fontWeight: '900' }}>✨ Featured Products</h2>
+            <h2 style={{ color: '#1e293b', fontSize: '24px', fontWeight: '900' }}>🛍️ Featured Products</h2>
             <div style={{ height: '2px', width: '40px', background: '#f97316' }} />
           </div>
           <p style={{ color: '#94a3b8', fontSize: '14px', marginTop: '6px' }}>{filtered.length} products available</p>
         </div>
-
         <CategoryBar selected={category} onSelect={cat => { setCategory(cat); setShowAll(false); }} />
         <div style={{ display: 'flex', justifyContent: 'flex-end', margin: '12px 0' }}>
           <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1.5px solid #e2e8f0', background: '#fff', color: '#475569', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
@@ -1069,31 +964,23 @@ const HomePage = ({ products, onOrderNow, onSetPage }) => {
             <option value="name">Name A-Z</option>
           </select>
         </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? '10px' : '16px' }}>
           {displayed.map(p => (
             <ProductCard key={p.id} product={p} onAddToCart={addToCart} onOrderNow={onOrderNow} />
           ))}
         </div>
-
         {filtered.length === 0 && (
           <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>
-            <div style={{ fontSize: '48px', marginBottom: '12px' }}>😔</div>
+            <div style={{ fontSize: '48px', marginBottom: '12px' }}>🔍</div>
             <p>No products found</p>
           </div>
         )}
-
         {filtered.length > SHOW_PER_CAT * 2 && (
           <div style={{ textAlign: 'center', marginTop: '24px' }}>
-            <button onClick={() => setShowAll(prev => !prev)} style={{
-              background: '#fff', color: '#f97316',
-              border: '2px solid #f97316', borderRadius: '25px',
-              padding: '11px 32px', fontSize: '14px', fontWeight: '700',
-              cursor: 'pointer', transition: 'all 0.2s',
-            }}
+            <button onClick={() => setShowAll(prev => !prev)} style={{ background: '#fff', color: '#f97316', border: '2px solid #f97316', borderRadius: '25px', padding: '11px 32px', fontSize: '14px', fontWeight: '700', cursor: 'pointer', transition: 'all 0.2s' }}
               onMouseEnter={e => { e.target.style.background = '#f97316'; e.target.style.color = '#fff'; }}
               onMouseLeave={e => { e.target.style.background = '#fff'; e.target.style.color = '#f97316'; }}>
-              {showAll ? '← See Less' : `See All ${filtered.length} Products →`}
+              {showAll ? '▲ See Less' : `See All ${filtered.length} Products ▼`}
             </button>
           </div>
         )}
@@ -1102,10 +989,10 @@ const HomePage = ({ products, onOrderNow, onSetPage }) => {
   );
 };
 
-
-// ── Products Page ─────────────────────────────────────────────────────────────
+// Products Page
 const ProductsPage = ({ products, onOrderNow }) => {
   const { addToCart } = useCart();
+  const isMobile = useIsMobile();
   const [category, setCategory] = useState('All');
   const [search,   setSearch]   = useState('');
   const [sortBy,   setSortBy]   = useState('default');
@@ -1125,12 +1012,12 @@ const ProductsPage = ({ products, onOrderNow }) => {
       <CategoryBar selected={category} onSelect={setCategory} />
       <div style={{ height: '1rem' }} />
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.2rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <h2 style={{ color: '#1e293b', fontSize: '22px', fontWeight: '700' }}>
+        <h2 style={{ color: '#1e293b', fontSize: isMobile ? '18px' : '22px', fontWeight: '700' }}>
           {category === 'All' ? 'All Products' : category}
           <span style={{ color: '#94a3b8', fontWeight: '400', fontSize: '15px', marginLeft: '8px' }}>({filtered.length})</span>
         </h2>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1.5px solid #e2e8f0', background: '#fff', color: '#1e293b', fontSize: '13px', outline: 'none' }} />
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <input type="text" placeholder="Search..." value={search} onChange={e => setSearch(e.target.value)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1.5px solid #e2e8f0', background: '#fff', color: '#1e293b', fontSize: '13px', outline: 'none', width: isMobile ? '100%' : 'auto' }} />
           <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '8px 14px', borderRadius: '20px', border: '1.5px solid #e2e8f0', background: '#fff', color: '#475569', fontSize: '13px', outline: 'none', cursor: 'pointer' }}>
             <option value="default">Sort By</option>
             <option value="price_asc">Price: Low → High</option>
@@ -1139,7 +1026,7 @@ const ProductsPage = ({ products, onOrderNow }) => {
           </select>
         </div>
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)', gap: isMobile ? '10px' : '16px' }}>
         {filtered.map(p => (
           <ProductCard key={p.id} product={p} onAddToCart={addToCart} onOrderNow={onOrderNow} />
         ))}
@@ -1148,108 +1035,61 @@ const ProductsPage = ({ products, onOrderNow }) => {
   );
 };
 
-
-// ── Main App ──────────────────────────────────────────────────────────────────
+// Main App
 const AppContent = () => {
-  const [page,       setPage]       = useState('Home');
-  const [showCart,   setShowCart]   = useState(false);
-  const [showAuth,   setShowAuth]   = useState(null);
-  const [orderModal, setOrderModal] = useState(null);
-  const [search,     setSearch]     = useState('');
-  const [products,   setProducts]   = useState([]);
-  const [user,       setUser]       = useState(localStorage.getItem('username') || null);
+  const [page,        setPage]       = useState('Home');
+  const [showCart,    setShowCart]   = useState(false);
+  const [showAuth,    setShowAuth]   = useState(null);
+  const [showProfile, setShowProfile]= useState(false);
+  const [orderModal,  setOrderModal] = useState(null);
+  const [search,      setSearch]     = useState('');
+  const [products,    setProducts]   = useState([]);
+  const [user,        setUser]       = useState(localStorage.getItem('username') || null);
 
   useEffect(() => {
     fetch(`${API}/api/products/`)
       .then(r => r.json())
-      .then(d => {
-        const prods = d.results || d;
-        // Debug: log first few image URLs
-        prods.slice(0, 3).forEach(p => {
-          console.log(`[IMG] ${p.name} | raw: ${p.image} | processed: ${getImg(p.image)}`);
-        });
-        setProducts(prods);
-      })
+      .then(d => setProducts(d.results || d))
       .catch(err => console.error('Failed to load products:', err));
   }, []);
 
-  const handleAuthSuccess = username => {
-    setUser(username);
-    localStorage.setItem('username', username);
-  };
+  const handleAuthSuccess = username => { setUser(username); localStorage.setItem('username', username); };
+  const handleLogout = () => { removeToken(); localStorage.removeItem('username'); setUser(null); };
+  const handleOrderNow = product => { if (!isLoggedIn()) { setShowAuth('login'); return; } setOrderModal(product); };
 
-  const handleLogout = () => {
-    removeToken();
-    localStorage.removeItem('username');
-    setUser(null);
-  };
-
-  const handleOrderNow = product => {
-    if (!isLoggedIn()) { setShowAuth('login'); return; }
-    setOrderModal(product);
-  };
-
-  const handleConfirmOrder = async (product, qty, address, phone, method, zone, deliveryCharge, trxId = '') => {
+  const handleConfirmOrder = async (product, qty, address, phone, email, method, zone, deliveryCharge, trxId = '') => {
     try {
       const token = getToken();
       const res = await fetch(`${API}/api/orders/create/`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({
-          product_id:      product.id,
-          quantity:        qty,
-          address,
-          phone,
-          delivery_zone:   zone,
-          delivery_charge: deliveryCharge,
-          payment_method:  method,
-          transaction_id:  trxId,
-        }),
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ product_id: product.id, quantity: qty, address, phone, email, delivery_zone: zone, delivery_charge: deliveryCharge, payment_method: method, transaction_id: trxId }),
       });
       const data = await res.json();
-
       if (res.status === 401 || (data.detail && data.detail.toLowerCase().includes('token'))) {
         removeToken(); localStorage.removeItem('username'); setUser(null);
-        alert('Session শেষ হয়েছে। আবার Login করুন।');
-        return;
+        alert('Session শেষ। আবার Login করুন'); return;
       }
-
-      if (data.payment_url) {
-        window.location.href = data.payment_url;
-      }
-    } catch (e) {
-      console.error('Order error:', e);
-    }
+      if (data.payment_url) window.location.href = data.payment_url;
+    } catch (e) { console.error('Order error:', e); }
   };
 
   const renderPage = () => {
     switch (page) {
-      case 'Home':     return <HomePage products={products} onOrderNow={handleOrderNow} onSetPage={setPage} />;
+      case 'Home':     return <HomePage products={products} onOrderNow={handleOrderNow} onSetPage={setPage} search={search} />;
       case 'Products': return <ProductsPage products={products} onOrderNow={handleOrderNow} />;
       case 'About':    return <AboutPage />;
       case 'Blog':     return <BlogPage />;
       case 'Contact':  return <ContactPage />;
-      default:         return <HomePage products={products} onOrderNow={handleOrderNow} onSetPage={setPage} />;
+      default:         return <HomePage products={products} onOrderNow={handleOrderNow} onSetPage={setPage} search={search} />;
     }
   };
 
   return (
     <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
-      <Navbar
-        page={page} setPage={setPage}
-        onCartClick={() => setShowCart(true)}
-        onAuthClick={tab => setShowAuth(tab)}
-        onLogout={handleLogout}
-        user={user}
-        search={search}
-        setSearch={setSearch}
-      />
+      <Navbar page={page} setPage={setPage} onCartClick={() => setShowCart(true)} onAuthClick={tab => setShowAuth(tab)} onLogout={handleLogout} onProfileClick={() => setShowProfile(true)} user={user} search={search} setSearch={setSearch} />
       {renderPage()}
       <Footer setPage={setPage} />
-
       {showCart && (
         <>
           <div onClick={() => setShowCart(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 999 }} />
@@ -1258,6 +1098,7 @@ const AppContent = () => {
       )}
       {showAuth && <AuthModal tab={showAuth} onClose={() => setShowAuth(null)} onSuccess={handleAuthSuccess} />}
       {orderModal && <OrderModal product={orderModal} onClose={() => setOrderModal(null)} onOrder={handleConfirmOrder} />}
+      {showProfile && <ProfilePage user={user} onClose={() => setShowProfile(false)} />}
     </div>
   );
 };

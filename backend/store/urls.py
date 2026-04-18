@@ -16,10 +16,10 @@ from .views import (
 )
 
 urlpatterns = [
-    # Auth
-    path('register/',      RegisterView.as_view(),       name='register'),
-    path('token/',         TokenObtainPairView.as_view(), name='token_obtain'),
-    path('token/refresh/', TokenRefreshView.as_view(),    name='token_refresh'),
+    # ✅ Auth
+    path('auth/register/',      RegisterView.as_view(),        name='register'),
+    path('auth/token/',         TokenObtainPairView.as_view(), name='token_obtain'),
+    path('auth/token/refresh/', TokenRefreshView.as_view(),    name='token_refresh'),
 
     # Products & Categories
     path('products/',   ProductListView.as_view(),  name='products'),

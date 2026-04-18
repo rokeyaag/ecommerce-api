@@ -215,8 +215,9 @@ def create_order(request):
     product = get_object_or_404(Product, id=d.get('product_id'))
     qty     = int(d.get('quantity', 1))
     method  = d.get('payment_method', 'cod')
+    customer_email = d.get('email', '')
 
-    product_total_bdt = Decimal(str(product.price)) * qty * Decimal('110')
+    product_total_bdt = Decimal(str(product.price)) * qty
     delivery_charge   = Decimal(str(d.get('delivery_charge', 80)))
     grand_total_bdt   = product_total_bdt + delivery_charge
     tran_id           = f"SHOPBD-{uuid.uuid4().hex[:14].upper()}"
@@ -234,6 +235,14 @@ def create_order(request):
         total_amount    = grand_total_bdt,
         transaction_id  = tran_id,
     )
+    # Customer email notification
+    if customer_email:
+        from .notifications import send_order_email, _customer_email_html
+        send_order_email(
+            to=customer_email,
+            subject=f'Order Confirmed #{order.id} | ShopBD',
+            html_body=_customer_email_html(order),
+        )
 
     # COD
     if method == 'cod':

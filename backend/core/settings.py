@@ -86,6 +86,8 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = 'en-us'
+DEFAULT_CHARSET = 'utf-8'
+EMAIL_CHARSET = 'utf-8'
 TIME_ZONE = 'Asia/Dhaka'
 USE_I18N = True
 USE_TZ = True
@@ -175,3 +177,6 @@ LOGGING = {
         'level': 'INFO',
     },
 }
+# Telegram
+TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+TELEGRAM_CHAT_ID   = os.environ.get('TELEGRAM_CHAT_ID', '')
