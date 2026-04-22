@@ -1,0 +1,49 @@
+[
+{
+  "model": "store.product",
+  "pk": 1,
+  "fields": {
+    "name": "HTC CT-8082",
+    "description": "",
+    "price": "1599.00",
+    "stock": 10,
+    "image": "https://img.drz.lazcdn.com/static/bd/p/90c0f926d3c327f3243aa96cb447afcd.png_2200x2200q80.png_.webp",
+    "image_url": null,
+    "category": 1,
+    "created_at": "2026-04-09T03:37:32.889Z"
+  }
+},
+{
+  "model": "store.product",
+  "pk": 4,
+  "fields": {
+    "name": "Bag",
+    "description": "",
+    "price": "600.00",
+    "stock": 19,
+    "image": "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=400",
+    "image_url": null,
+    "category": 1,
+    "created_at": "2026-04-09T03:59:24.401Z"
+  }
+},
+{
+  "model": "store.product",
+  "pk": 7,
+  "fields": {
+    "name": "Glinder",
+    "description": "",
+    "price": "850.00",
+    "stock": 10,
+    "image": "https://img.drz.lazcdn.com/static/bd/p/ec958fab552e214b19c0a813a2d7deff.jpg_2200x2200q80.jpg_.webp",
+    "image_url": null,
+    "category": 1,
+    "created_at": "2026-04-09T14:19:58.717Z"
+  }
+},
+{
+  "model": "store.product",
+  "pk": 8,
+  "fields": {
+    "name": "Hijab Pins",
+    "description": 

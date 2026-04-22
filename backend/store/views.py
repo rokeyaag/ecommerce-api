@@ -1,4 +1,4 @@
-import json
+ï»¿import json
 import uuid
 import requests
 import urllib.request
@@ -105,7 +105,7 @@ class OrderView(APIView):
 
 
 # ---------------------------------------------------------------------
-# Stripe (placeholder — keys not configured)
+# Stripe (placeholder â€” keys not configured)
 # ---------------------------------------------------------------------
 
 class StripeCheckoutView(APIView):
@@ -123,7 +123,7 @@ class StripeWebhookView(APIView):
 
 
 # ---------------------------------------------------------------------
-# SSLCommerz (legacy — keeping for backward compatibility)
+# SSLCommerz (legacy â€” keeping for backward compatibility)
 # ---------------------------------------------------------------------
 
 class SSLCommerzInitView(APIView):
@@ -206,7 +206,7 @@ def ai_product_suggest(request):
 
 
 # ---------------------------------------------------------------------
-# Order Create — payment ?? (????)
+# Order Create â€” payment ?? (????)
 # ---------------------------------------------------------------------
 
 @api_view(['POST'])
@@ -238,12 +238,15 @@ def create_order(request):
     )
     # Customer email notification
     if customer_email:
-        from .notifications import send_order_email, _customer_email_html
-        send_order_email(
-            to=customer_email,
-            subject=f'Order Confirmed #{order.id} | ShopBD',
-            html_body=_customer_email_html(order),
-        )
+        try:
+            from .notifications import send_order_email, _customer_email_html
+            send_order_email(
+                to=customer_email,
+                subject=f'Order Confirmed #{order.id} | ShopBD',
+                html_body=_customer_email_html(order),
+            )
+        except Exception:
+            pass
 
     # COD
     if method == 'cod':
@@ -409,3 +412,4 @@ def shurjopay_callback(request):
 @csrf_exempt
 def shurjopay_cancel(request):
     return redirect(f"{settings.FRONTEND_URL}/?payment=cancelled")
+
