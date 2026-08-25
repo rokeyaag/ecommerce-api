@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CartProvider, useCart } from './context/CartContext';
 import CartPage from './pages/CartPage';
 import ProfilePage from './pages/ProfilePage';
@@ -6,6 +6,142 @@ import {
   loginUser, registerUser,
   getToken, setToken, removeToken, isLoggedIn
 } from './api';
+
+
+export const DEFAULT_PRODUCTS = [
+  {
+    id: 1,
+    name: 'Sony WH-1000XM5 Wireless Noise-Cancelling Headphones',
+    price: 24500,
+    image_url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=800&q=80',
+    category: { name: 'Electronics' },
+    description: 'Industry-leading noise cancellation with Auto NC Optimizer, crystal-clear hands-free calling and 30-hour battery life.',
+    stock: 12,
+    rating: 4.9,
+    reviews_count: 142
+  },
+  {
+    id: 2,
+    name: 'Apple Watch Ultra Pro Titanium Smartwatch',
+    price: 42000,
+    image_url: 'https://images.unsplash.com/photo-1523275335684-37898b6baf30?w=800&q=80',
+    category: { name: 'Electronics' },
+    description: 'Rugged and capable titanium case with precision dual-frequency GPS, up to 36 hours of battery life and specialized straps.',
+    stock: 8,
+    rating: 4.8,
+    reviews_count: 98
+  },
+  {
+    id: 3,
+    name: 'Custom RGB Mechanical Gaming Keyboard',
+    price: 6500,
+    image_url: 'https://images.unsplash.com/photo-1587829741301-dc798b83add3?w=800&q=80',
+    category: { name: 'Electronics' },
+    description: 'Hot-swappable tactile switches with per-key RGB backlighting, durable PBT keycaps and aircraft-grade aluminum chassis.',
+    stock: 25,
+    rating: 4.7,
+    reviews_count: 76
+  },
+  {
+    id: 4,
+    name: 'Classic Vintage Heavyweight Denim Jacket',
+    price: 3800,
+    image_url: 'https://images.unsplash.com/photo-1576995853123-5a10305d93c0?w=800&q=80',
+    category: { name: 'Clothing' },
+    description: 'Timeless relaxed fit denim jacket crafted from 100% premium heavyweight cotton denim with antique brass buttons.',
+    stock: 18,
+    rating: 4.8,
+    reviews_count: 64
+  },
+  {
+    id: 5,
+    name: 'Premium Tailored Cotton Oxford Shirt',
+    price: 2200,
+    image_url: 'https://images.unsplash.com/photo-1596755094514-f87e34085b2c?w=800&q=80',
+    category: { name: 'Clothing' },
+    description: 'Breathable easy-iron cotton fabric with a modern slim fit cut, perfect for both formal meetings and casual evenings.',
+    stock: 30,
+    rating: 4.6,
+    reviews_count: 82
+  },
+  {
+    id: 6,
+    name: 'Streetwear Oversized Graphic Cotton Hoodie',
+    price: 2600,
+    image_url: 'https://images.unsplash.com/photo-1556905055-8f358a7a47b2?w=800&q=80',
+    category: { name: 'Clothing' },
+    description: 'Super soft brushed fleece lining with dropped shoulders, spacious kangaroo pouch pocket and ribbed cuffs.',
+    stock: 22,
+    rating: 4.9,
+    reviews_count: 110
+  },
+  {
+    id: 7,
+    name: 'Nike Air Max Pulse Dynamic Running Shoes',
+    price: 12500,
+    image_url: 'https://images.unsplash.com/photo-1542291026-7eec264c27ff?w=800&q=80',
+    category: { name: 'Footwear' },
+    description: 'Point-loaded cushioning with responsive Air Max units, breathable textile upper and durable rubber waffle outsole.',
+    stock: 14,
+    rating: 4.9,
+    reviews_count: 215
+  },
+  {
+    id: 8,
+    name: 'Minimalist Clean White Leather Sneakers',
+    price: 5400,
+    image_url: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=800&q=80',
+    category: { name: 'Footwear' },
+    description: 'Full-grain genuine Italian leather sneakers with cushioned memory foam insole and reinforced stitched sole.',
+    stock: 16,
+    rating: 4.7,
+    reviews_count: 89
+  },
+  {
+    id: 9,
+    name: 'Handcrafted Classic Formal Leather Oxford Shoes',
+    price: 7800,
+    image_url: 'https://images.unsplash.com/photo-1614252235316-8c857d38b5f4?w=800&q=80',
+    category: { name: 'Footwear' },
+    description: 'Sophisticated closed lacing design with premium burnished calfskin leather, leather lining and stacked heel.',
+    stock: 10,
+    rating: 4.8,
+    reviews_count: 45
+  },
+  {
+    id: 10,
+    name: 'Anti-Theft Waterproof Laptop Backpack',
+    price: 4200,
+    image_url: 'https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=800&q=80',
+    category: { name: 'Accessories' },
+    description: 'TSA-friendly 15.6" laptop compartment, hidden anti-theft zipper pockets, USB charging port and water-resistant fabric.',
+    stock: 28,
+    rating: 4.8,
+    reviews_count: 130
+  },
+  {
+    id: 11,
+    name: 'Matte Black UV400 Polarized Sunglasses',
+    price: 1850,
+    image_url: 'https://images.unsplash.com/photo-1511499767150-a48a237f0083?w=800&q=80',
+    category: { name: 'Accessories' },
+    description: 'High-definition polarized lenses with 100% UV400 protection, lightweight TR90 memory frame and anti-glare coating.',
+    stock: 35,
+    rating: 4.7,
+    reviews_count: 73
+  },
+  {
+    id: 12,
+    name: 'Minimalist Dimmable LED Touch Desk Lamp',
+    price: 2300,
+    image_url: 'https://images.unsplash.com/photo-1507473885765-e6ed057f782c?w=800&q=80',
+    category: { name: 'Other' },
+    description: 'Eye-caring non-flickering LED light with 5 color temperatures, step-less brightness touch control and wireless phone charger.',
+    stock: 20,
+    rating: 4.8,
+    reviews_count: 58
+  }
+];
 
 const API = 'http://localhost:8000';
 
@@ -1043,7 +1179,7 @@ const AppContent = () => {
   const [showProfile, setShowProfile]= useState(false);
   const [orderModal,  setOrderModal] = useState(null);
   const [search,      setSearch]     = useState('');
-  const [products,    setProducts]   = useState([]);
+  const [products,    setProducts]   = useState(DEFAULT_PRODUCTS);
   const [user,        setUser]       = useState(localStorage.getItem('username') || null);
 
   useEffect(() => {
